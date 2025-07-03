@@ -1,12 +1,15 @@
 import datetime
 import io
+import os
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters
 from telegram.ext import ContextTypes
 
-BOT_TOKEN = '7206895961:AAFZ9ZKRV608thONO6dfTLoojzokmHLlxMg'
-CHAT_ID = '2075136580'
+
+BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+if not BOT_TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set. Please set it with your bot token.")
 
 
 def send_to_telegram(commands_dict: dict):

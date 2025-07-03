@@ -158,6 +158,7 @@ async def get_pattern(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
             "Please reply with:\n"
             "`1` or `yes` ⇒ include only bullish candlestick patterns\n"
             "`0` or `no` ⇒ include all candlestick patterns\n"
+            "`-` ⇒ ignore candlestick filter",
             parse_mode="Markdown"
         )
         return PATTERN
