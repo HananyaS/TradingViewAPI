@@ -306,6 +306,6 @@ def main_telegram():
 
 
 if __name__ == "__main__":
-    # main_telegram()
-    res_df = query_by_params()
-    print(res_df)
+    main_telegram()
+    # res_df = query_by_params()
+    # print(res_df)
