@@ -6,6 +6,7 @@ from telegram.ext import (
 )
 from tradingview_screener import Query, Column
 
+from consts import Consts
 from default_query_params import Defaults
 from telegram_bot import create_csv_from_pd, BOT_TOKEN
 from utils import clean_candle_columns
@@ -13,7 +14,7 @@ from utils import clean_candle_columns
 # Search All Fields AT || https://shner-elmo.github.io/TradingView-Screener/fields/stocks.html
 
 # Conversation states
-(APPLY_DEFAULTS, EXC, RV, CHG, MINR, MAXR, MINATR, MAXATR, PATTERN, RESULT) = range(10)
+(APPLY_DEFAULTS, US_EXC_ONLY, RV, CHG, MINR, MAXR, MINATR, MAXATR, PATTERN, RESULT) = range(10)
 
 
 def parse_optional_float(text: str) -> Optional[float]:
@@ -28,7 +29,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(f"""
         Apply Default Params? 
         
-        - exchange = {Defaults.EXCHANGE}
+        - us_exchanges_only = {Defaults.US_EXCHANGES_ONLY}
         - min_relative_volume = {Defaults.MIN_RELATIVE_VOLUME}
         - min_change = {Defaults.MIN_CHANGE}
         - min_sma20_above_pct = {Defaults.MIN_SMA20_ABOVE_PCT}
@@ -60,7 +61,7 @@ async def get_apply_defaults(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
         )
 
     if ctx.user_data['apply_defaults']:
-        ctx.user_data['exchange'] = Defaults.EXCHANGE
+        ctx.user_data['us_exchanges_only'] = Defaults.US_EXCHANGES_ONLY
         ctx.user_data['min_relative_volume'] = Defaults.MIN_RELATIVE_VOLUME
         ctx.user_data['min_change'] = Defaults.MIN_CHANGE
         ctx.user_data['min_sma20_above_pct'] = Defaults.MIN_SMA20_ABOVE_PCT
@@ -74,12 +75,27 @@ async def get_apply_defaults(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
 
     else:
         await update.message.reply_text("Enter exchange (e.g. NASDAQ) or '-' to ignore:")
-        return EXC
+        return US_EXC_ONLY
 
 
-async def get_exchange(update, ctx):
-    txt = update.message.text.strip()
-    ctx.user_data['exchange'] = None if txt == '-' else txt.upper()
+async def get_us_exchanges_only(update, ctx):
+    txt = update.message.text.strip().lower()
+
+    if txt == '-':
+        ctx.user_data['us_exchanges_only'] = False
+    elif txt in ('1', 'yes', 'y', 'true', 't'):
+        ctx.user_data['us_exchanges_only'] = True
+    elif txt in ('0', 'no', 'n', 'false', 'f'):
+        ctx.user_data['us_exchanges_only'] = False
+    else:
+        await update.message.reply_text(
+            "Please reply with:\n"
+            "`1` or `yes` ⇒ include only us exchanges\n"
+            "`0` or `no` ⇒ include all exchanges\n",
+            parse_mode="Markdown"
+        )
+        return US_EXC_ONLY
+
     await update.message.reply_text("Min relative_volume (e.g. 1.5 or '-'):")
     return RV
 
@@ -170,7 +186,7 @@ async def get_pattern(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 async def get_result(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     # Map None to defaults in function call
     params = {
-        'exchange': ctx.user_data.get('exchange'),
+        'us_exchanges_only': ctx.user_data.get('us_exchanges_only'),
         'min_relative_volume': ctx.user_data.get('min_relative_volume'),
         'min_change': ctx.user_data.get('min_change'),
         'min_sma20_above_pct': ctx.user_data.get('min_sma20_above_pct'),
@@ -200,7 +216,7 @@ async def get_result(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 def query_by_params(
-        exchange=Defaults.EXCHANGE,
+        us_exchanges_only=Defaults.US_EXCHANGES_ONLY,
         min_relative_volume=Defaults.MIN_RELATIVE_VOLUME,
         min_change=Defaults.MIN_CHANGE,
         min_sma20_above_pct=Defaults.MIN_SMA20_ABOVE_PCT,
@@ -212,7 +228,7 @@ def query_by_params(
     print(f"""
     APPLYING QUERY BY PARAMS:
     
-    - exchange = {exchange}
+    - us_exchanges_only = {us_exchanges_only}
     - min_relative_volume = {min_relative_volume}
     - min_change = {min_change}
     - min_sma20_above_pct = {min_sma20_above_pct}
@@ -228,8 +244,8 @@ def query_by_params(
 
     query_filters = []
 
-    if exchange is not None:
-        query_filters.append(Column('exchange') == exchange)
+    if us_exchanges_only:
+        query_filters.append(Column('exchange').isin(Consts.US_EXCHANGES))
 
     if min_relative_volume is not None:
         query_filters.append(Column('relative_volume') > min_relative_volume)
@@ -289,7 +305,7 @@ def main_telegram():
         entry_points=[CommandHandler("run_filtered", start)],
         states={
             APPLY_DEFAULTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_apply_defaults)],
-            EXC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_exchange)],
+            US_EXC_ONLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_us_exchanges_only)],
             RV: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_rv)],
             CHG: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_chg)],
             MINR: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_minr)],
