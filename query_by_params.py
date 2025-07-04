@@ -6,6 +6,7 @@ from telegram.ext import (
 )
 from tradingview_screener import Query, Column
 
+from default_query_params import Defaults
 from telegram_bot import create_csv_from_pd, BOT_TOKEN
 from utils import clean_candle_columns
 
@@ -24,17 +25,17 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     ctx.user_data.clear()
     print('in start')
 
-    await update.message.reply_text("""
+    await update.message.reply_text(f"""
         Apply Default Params? 
         
-        - exchange = 'NASDAQ',
-        - min_relative_volume = 1.5,
-        - min_change = 0.05,
-        - min_sma20_above_pct = 1.1,
-        - max_sma20_above_pct = None,
-        - min_atr_pct = 5.0,
-        - max_atr_pct = 5.0,
-        - bullish_candlestick_patterns_only = True
+        - exchange = {Defaults.EXCHANGE}
+        - min_relative_volume = {Defaults.MIN_RELATIVE_VOLUME}
+        - min_change = {Defaults.MIN_CHANGE}
+        - min_sma20_above_pct = {Defaults.MIN_SMA20_ABOVE_PCT}
+        - max_sma20_above_pct = {Defaults.MAX_SMA20_ABOVE_PCT}
+        - min_atr_pct = {Defaults.MIN_ATR_PCT}
+        - max_atr_pct = {Defaults.MAX_ATR_PCT}
+        - bullish_candlestick_patterns_only = {Defaults.BULLISH_CANDLESTICK_PATTERNS_ONLY}
     """)
 
     return APPLY_DEFAULTS
@@ -59,14 +60,14 @@ async def get_apply_defaults(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
         )
 
     if ctx.user_data['apply_defaults']:
-        ctx.user_data['exchange'] = 'NASDAQ'
-        ctx.user_data['min_relative_volume'] = 1.5
-        ctx.user_data['min_change'] = .05
-        ctx.user_data['min_sma20_above_pct'] = 1.1
-        ctx.user_data['max_sma20_above_pct'] = None
-        ctx.user_data['min_atr_pct'] = 5
-        ctx.user_data['max_atr_pct'] = None
-        ctx.user_data['bullish_only'] = True
+        ctx.user_data['exchange'] = Defaults.EXCHANGE
+        ctx.user_data['min_relative_volume'] = Defaults.MIN_RELATIVE_VOLUME
+        ctx.user_data['min_change'] = Defaults.MIN_CHANGE
+        ctx.user_data['min_sma20_above_pct'] = Defaults.MIN_SMA20_ABOVE_PCT
+        ctx.user_data['max_sma20_above_pct'] = Defaults.MAX_SMA20_ABOVE_PCT
+        ctx.user_data['min_atr_pct'] = Defaults.MIN_ATR_PCT
+        ctx.user_data['max_atr_pct'] = Defaults.MAX_ATR_PCT
+        ctx.user_data['bullish_only'] = Defaults.BULLISH_CANDLESTICK_PATTERNS_ONLY
 
         await update.message.reply_text("Settings Defaults... Fetching results...")
         return await get_result(update, ctx)
@@ -199,14 +200,14 @@ async def get_result(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 def query_by_params(
-        exchange='NASDAQ',
-        min_relative_volume=1.5,
-        min_change=0.05,
-        min_sma20_above_pct=1.1,
-        max_sma20_above_pct=None,
-        min_atr_pct=5.0,
-        max_atr_pct=5.0,
-        bullish_candlestick_patterns_only=True
+        exchange=Defaults.EXCHANGE,
+        min_relative_volume=Defaults.MIN_RELATIVE_VOLUME,
+        min_change=Defaults.MIN_CHANGE,
+        min_sma20_above_pct=Defaults.MIN_SMA20_ABOVE_PCT,
+        max_sma20_above_pct=Defaults.MAX_SMA20_ABOVE_PCT,
+        min_atr_pct=Defaults.MIN_ATR_PCT,
+        max_atr_pct=Defaults.MAX_ATR_PCT,
+        bullish_candlestick_patterns_only=Defaults.BULLISH_CANDLESTICK_PATTERNS_ONLY,
 ):
     print(f"""
     APPLYING QUERY BY PARAMS:
@@ -225,25 +226,27 @@ def query_by_params(
         'Candle.Hammer', 'Candle.Engulfing.Bullish', 'Candle.Doji', 'Candle.Marubozu.White',
     )
 
+    query_filters = []
+
     if exchange is not None:
-        trv_query = trv_query.where(Column('exchange') == exchange)
+        query_filters.append(Column('exchange') == exchange)
 
     if min_relative_volume is not None:
-        trv_query = trv_query.where(Column('relative_volume') > min_relative_volume)
+        query_filters.append(Column('relative_volume') > min_relative_volume)
 
     if min_change is not None:
-        trv_query = trv_query.where(Column('change') > min_change)
+        query_filters.append(Column('change') > min_change)
 
     if min_sma20_above_pct is not None:
-        trv_query = trv_query.where(Column('SMA20').above_pct('close', min_sma20_above_pct))
+        query_filters.append(Column('SMA20').above_pct('close', min_sma20_above_pct))
 
     if max_sma20_above_pct is not None:
-        trv_query = trv_query.where(Column('SMA20').below_pct('close', max_sma20_above_pct))
+        query_filters.append(Column('SMA20').below_pct('close', max_sma20_above_pct))
 
-    _, query_results_pd = trv_query.order_by(
+    _, query_results_pd = trv_query.where(*query_filters).order_by(
         'market_cap_basic',
         ascending=False
-    ).get_scanner_data()
+    ).limit(int(1e6)).get_scanner_data()
 
     query_results_pd['ATR%'] = query_results_pd['ATR'] / query_results_pd['close'] * 100
 
@@ -258,7 +261,6 @@ def query_by_params(
             (
                     query_results_pd['Candle.Hammer'] +
                     query_results_pd['Candle.Engulfing.Bullish'] +
-                    query_results_pd['Candle.Doji'] +
                     query_results_pd['Candle.Marubozu.White']
             ) >= 1
             ]
@@ -280,7 +282,7 @@ def query_by_params(
     ]
 
 
-def main():
+def main_telegram():
     print("BUILDING TELEGRAM BOT...")
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     conv = ConversationHandler(
@@ -304,4 +306,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main_telegram()
+    res_df = query_by_params()
+    print(res_df)
