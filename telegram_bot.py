@@ -39,9 +39,13 @@ def create_csv_from_pd(results):
 
 
 def add_help_command(app) -> None:
-    def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-        available_commands = list(filter(lambda attr: not attr.startswith('__'), dir(Command)))
-        help_text = f"Available commands:\n{f'\n\t- '.join(available_commands)}"
-        update.message.reply_text(help_text)
+    async def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        # Dynamically get all class attributes that are not dunder or private
+        command_attrs = [attr for attr in dir(Command) if not attr.startswith('__') and not callable(getattr(Command, attr))]
+        help_text = "Available commands:\n"
+        for attr in command_attrs:
+            value = getattr(Command, attr)
+            help_text += f"/{value}\n"
+        await update.message.reply_text(help_text)
 
     app.add_handler(CommandHandler(Command.HELP, help_command))
