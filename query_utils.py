@@ -8,8 +8,9 @@ from telegram.ext import (
 
 def parse_optional_float(text: str) -> Optional[float]:
     text = text.strip()
-    return None if text == '-' else float(text)
-
+    if text == '-': return text
+    try: return float(text)
+    except ValueError: return None
 
 def parse_optional_bool(text: str) -> Optional[bool]:
     text = text.strip().lower()

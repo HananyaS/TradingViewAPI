@@ -16,18 +16,12 @@ from utils import clean_candle_columns
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     ctx.user_data.clear()
-    await update.message.reply_text(f"""
-        Apply Default Params?
-        
-        - us_exchanges_only = {Defaults.US_EXCHANGES_ONLY}
-        - min_relative_volume = {Defaults.MIN_RELATIVE_VOLUME}
-        - min_change = {Defaults.MIN_CHANGE}
-        - min_sma20_above_pct = {Defaults.MIN_SMA20_ABOVE_PCT}
-        - max_sma20_above_pct = {Defaults.MAX_SMA20_ABOVE_PCT}
-        - min_atr_pct = {Defaults.MIN_ATR_PCT}
-        - max_atr_pct = {Defaults.MAX_ATR_PCT}
-        - bullish_candlestick_patterns_only = {Defaults.BULLISH_CANDLESTICK_PATTERNS_ONLY}
-    """)
+    start_msg = "Apply Default Params?  yes/no or '-':\n\n"
+
+    for param in PARAMS:
+        start_msg += f"\t{param.name}: {param.default}\n"
+
+    await update.message.reply_text(start_msg)
     return APPLY_DEFAULTS
 
 
@@ -66,6 +60,9 @@ async def param_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         return param.var
     if param.postprocess:
         value = param.postprocess(value)
+
+    if value == '-': value = None
+
     ctx.user_data[param.name] = value
     idx += 1
     if idx >= len(PARAMS):
@@ -87,7 +84,8 @@ async def get_result(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         'max_sma20_above_pct': params['max_sma20_above_pct'],
         'min_atr_pct': params['min_atr_pct'],
         'max_atr_pct': params['max_atr_pct'],
-        'bullish_candlestick_patterns_only': params['bullish_only'],
+        'min_adr_pct': params['min_adr_pct'],
+        'bullish_candlestick_patterns_only': params['bullish_candlestick_patterns_only'],
     }
     df = query_by_params(**query_params)
     if df.empty:
@@ -136,6 +134,7 @@ def query_by_params(
     APPLYING QUERY BY PARAMS:
     {params}
     """)
+
     trv_query = Query().select(*Consts.COLUMNS_TO_RETRIEVE)
     query_filters = []
     if params['us_exchanges_only']:
