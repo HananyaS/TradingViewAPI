@@ -3,26 +3,15 @@ import io
 import os
 
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters, \
+    CallbackContext
 from telegram.ext import ContextTypes
 
+from commands import Command
 
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 if not BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set. Please set it with your bot token.")
-
-
-def send_to_telegram(commands_dict: dict):
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    for command, func in commands_dict.items():
-        app.add_handler(CommandHandler(command, func))
-
-    app.add_handler(CommandHandler('start', lambda update, context: update.message.reply_text(
-        "Welcome! Use /run to start the screener.")))
-    app.add_handler(CommandHandler('help', lambda update, context: update.message.reply_text(
-        f"Available commands:\n{'\n'.join([f'/{cmd}' for cmd in commands_dict.keys()])}")))
-    app.run_polling()
 
 
 def create_csv_from_pd(results):
@@ -49,37 +38,10 @@ def create_csv_from_pd(results):
     return buf
 
 
-def build_screener_text_and_csv_func(get_query_results_func, use_user_args: bool = True):
-    async def run_screener(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # Notify user
-        await update.message.reply_text("🔍 Running screener…")
+def add_help_command(app) -> None:
+    def help_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        available_commands = list(filter(lambda attr: not attr.startswith('__'), dir(Command)))
+        help_text = f"Available commands:\n{f'\n\t- '.join(available_commands)}"
+        update.message.reply_text(help_text)
 
-        # Perform your scan
-        if use_user_args:
-            results = get_query_results_func(**context.user_data).to_string(index=False)
-
-        else:
-            results = get_query_results_func().to_string(index=False)
-
-        await update.message.reply_text(f"📊 Results:\n{results}")
-
-    async def run_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # Run your screener query
-
-        if use_user_args:
-            results = get_query_results_func(**context.user_data)
-
-        else:
-            results = get_query_results_func()
-
-        if results.empty:
-            await update.message.reply_text("❌ No results found.")
-            return
-
-        buf = create_csv_from_pd(results)
-
-        await context.bot.send_document(chat_id=update.effective_chat.id,
-                                        document=buf,
-                                        caption="📊 Your screener CSV")
-
-    return run_screener, run_csv
+    app.add_handler(CommandHandler(Command.HELP, help_command))

@@ -8,7 +8,7 @@ from commands import Command
 from consts import Consts
 from default_params import Defaults
 from query_params import APPLY_DEFAULTS, PARAMS
-from telegram_bot import create_csv_from_pd, BOT_TOKEN
+from telegram_bot import create_csv_from_pd, BOT_TOKEN, add_help_command
 from utils import clean_candle_columns
 
 
@@ -198,6 +198,8 @@ def main_telegram():
         states=states,
         fallbacks=[]
     )
+
+    add_help_command(app)
     app.add_handler(conv)
     app.run_polling()
 
