@@ -81,7 +81,6 @@ async def get_result(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         'min_relative_volume': params['min_relative_volume'],
         'min_change': params['min_change'],
         'min_sma20_above_pct': params['min_sma20_above_pct'],
-        'max_sma20_above_pct': params['max_sma20_above_pct'],
         'min_atr_pct': params['min_atr_pct'],
         'min_adr_pct': params['min_adr_pct'],
         'filter_out_otc': params['filter_out_otc'],
@@ -109,7 +108,6 @@ def query_by_params(
         min_relative_volume=Defaults.MIN_RELATIVE_VOLUME,
         min_change=Defaults.MIN_CHANGE,
         min_sma20_above_pct=Defaults.MIN_SMA20_ABOVE_PCT,
-        max_sma20_above_pct=Defaults.MAX_SMA20_ABOVE_PCT,
         min_atr_pct=Defaults.MIN_ATR_PCT,
         min_adr_pct=Defaults.MIN_ADR_PCT,
         filter_out_otc=Defaults.FILTER_OUT_OTC,
@@ -123,7 +121,6 @@ def query_by_params(
         'min_relative_volume': kwargs.get('min_relative_volume', min_relative_volume),
         'min_change': kwargs.get('min_change', min_change),
         'min_sma20_above_pct': kwargs.get('min_sma20_above_pct', min_sma20_above_pct),
-        'max_sma20_above_pct': kwargs.get('max_sma20_above_pct', max_sma20_above_pct),
         'min_atr_pct': kwargs.get('min_atr_pct', min_atr_pct),
         'min_adr_pct': kwargs.get('min_adr_pct', min_adr_pct),
         'filter_out_otc': kwargs.get('filter_out_otc', filter_out_otc),
@@ -147,8 +144,6 @@ def query_by_params(
         query_filters.append(Column('change') > params['min_change'])
     if params['min_sma20_above_pct'] is not None:
         query_filters.append(Column('SMA20').above_pct('close', params['min_sma20_above_pct']))
-    if params['max_sma20_above_pct'] is not None:
-        query_filters.append(Column('SMA20').below_pct('close', params['max_sma20_above_pct']))
     _, query_results_pd = trv_query.where(*query_filters).order_by(
         'market_cap_basic',
         ascending=False
@@ -157,11 +152,9 @@ def query_by_params(
     # Add SMA20/Close ratio column
     query_results_pd['SMA20/Close'] = query_results_pd['SMA20'] / query_results_pd['close']
     
-    # Filter by SMA20/Close ratio if specified
+    # Filter by SMA20/Close ratio if specified (only minimum)
     if params['min_sma20_above_pct'] is not None:
         query_results_pd = query_results_pd[query_results_pd['SMA20/Close'] >= params['min_sma20_above_pct']]
-    if params['max_sma20_above_pct'] is not None:
-        query_results_pd = query_results_pd[query_results_pd['SMA20/Close'] <= params['max_sma20_above_pct']]
     
     query_results_pd['ATR%'] = query_results_pd['ATR'] / query_results_pd['close'] * 100
     if params['min_atr_pct'] is not None:
@@ -185,6 +178,10 @@ def query_by_params(
             ) >= 1
             ]
     clean_candles_df = clean_candle_columns(query_results_pd)
+    
+    # Order final results by SMA20/Close ratio in descending order
+    clean_candles_df = clean_candles_df.sort_values('SMA20/Close', ascending=False)
+    
     return clean_candles_df[
         [
             'name',

@@ -50,12 +50,6 @@ PARAMS = [
         default=Defaults.MIN_SMA20_ABOVE_PCT,
     ),
     QueryParam(
-        name='max_sma20_above_pct',
-        prompt="Max SMA20/close ratio (or '-'):",
-        parser=parse_optional_float,
-        default=Defaults.MAX_SMA20_ABOVE_PCT,
-    ),
-    QueryParam(
         name='min_atr_pct',
         prompt="Min ATR % (e.g. 5 or '-'):",
         parser=parse_optional_float,
