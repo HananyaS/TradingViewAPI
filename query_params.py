@@ -62,16 +62,16 @@ PARAMS = [
         default=Defaults.MIN_ATR_PCT,
     ),
     QueryParam(
-        name='max_atr_pct',
-        prompt="Max ATR % (e.g. 10 or '-'):",
-        parser=parse_optional_float,
-        default=Defaults.MAX_ATR_PCT,
-    ),
-    QueryParam(
         name='min_adr_pct',
         prompt="Min ADR % (e.g. 3 or '-'):",
         parser=parse_optional_float,
         default=Defaults.MIN_ADR_PCT,
+    ),
+    QueryParam(
+        name='filter_out_otc',
+        prompt="Filter out OTC exchanges? yes/no or '-':",
+        parser=parse_optional_bool,
+        default=Defaults.FILTER_OUT_OTC,
     ),
     QueryParam(
         name='bullish_candlestick_patterns_only',

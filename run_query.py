@@ -83,8 +83,8 @@ async def get_result(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         'min_sma20_above_pct': params['min_sma20_above_pct'],
         'max_sma20_above_pct': params['max_sma20_above_pct'],
         'min_atr_pct': params['min_atr_pct'],
-        'max_atr_pct': params['max_atr_pct'],
         'min_adr_pct': params['min_adr_pct'],
+        'filter_out_otc': params['filter_out_otc'],
         'bullish_candlestick_patterns_only': params['bullish_candlestick_patterns_only'],
     }
     df = query_by_params(**query_params)
@@ -111,8 +111,8 @@ def query_by_params(
         min_sma20_above_pct=Defaults.MIN_SMA20_ABOVE_PCT,
         max_sma20_above_pct=Defaults.MAX_SMA20_ABOVE_PCT,
         min_atr_pct=Defaults.MIN_ATR_PCT,
-        max_atr_pct=Defaults.MAX_ATR_PCT,
         min_adr_pct=Defaults.MIN_ADR_PCT,
+        filter_out_otc=Defaults.FILTER_OUT_OTC,
         bullish_candlestick_patterns_only=Defaults.BULLISH_CANDLESTICK_PATTERNS_ONLY,
         **kwargs
 ):
@@ -125,8 +125,8 @@ def query_by_params(
         'min_sma20_above_pct': kwargs.get('min_sma20_above_pct', min_sma20_above_pct),
         'max_sma20_above_pct': kwargs.get('max_sma20_above_pct', max_sma20_above_pct),
         'min_atr_pct': kwargs.get('min_atr_pct', min_atr_pct),
-        'max_atr_pct': kwargs.get('max_atr_pct', max_atr_pct),
         'min_adr_pct': kwargs.get('min_adr_pct', min_adr_pct),
+        'filter_out_otc': kwargs.get('filter_out_otc', filter_out_otc),
         'bullish_candlestick_patterns_only': kwargs.get('bullish_candlestick_patterns_only',
                                                         bullish_candlestick_patterns_only),
     }
@@ -153,15 +153,28 @@ def query_by_params(
         'market_cap_basic',
         ascending=False
     ).limit(int(1e6)).get_scanner_data()
+    
+    # Add SMA20/Close ratio column
+    query_results_pd['SMA20/Close'] = query_results_pd['SMA20'] / query_results_pd['close']
+    
+    # Filter by SMA20/Close ratio if specified
+    if params['min_sma20_above_pct'] is not None:
+        query_results_pd = query_results_pd[query_results_pd['SMA20/Close'] >= params['min_sma20_above_pct']]
+    if params['max_sma20_above_pct'] is not None:
+        query_results_pd = query_results_pd[query_results_pd['SMA20/Close'] <= params['max_sma20_above_pct']]
+    
     query_results_pd['ATR%'] = query_results_pd['ATR'] / query_results_pd['close'] * 100
     if params['min_atr_pct'] is not None:
         query_results_pd = query_results_pd[query_results_pd['ATR%'] >= params['min_atr_pct']]
-    if params['max_atr_pct'] is not None:
-        query_results_pd = query_results_pd[query_results_pd['ATR%'] <= params['max_atr_pct']]
 
     query_results_pd['ADR%'] = query_results_pd['ADR'] / query_results_pd['close'] * 100
     if params['min_adr_pct'] is not None:
         query_results_pd = query_results_pd[query_results_pd['ADR%'] >= params['min_adr_pct']]
+
+    # Filter out OTC exchanges if specified
+    if params['filter_out_otc']:
+        otc_exchanges = ['OTC', 'OTC MARKETS']
+        query_results_pd = query_results_pd[~query_results_pd['exchange'].isin(otc_exchanges)]
 
     if params['bullish_candlestick_patterns_only']:
         query_results_pd = query_results_pd[
@@ -175,10 +188,12 @@ def query_by_params(
     return clean_candles_df[
         [
             'name',
+            'exchange',
             'close',
             'change',
             'volume',
             'SMA20',
+            'SMA20/Close',
             'relative_volume',
             'market_cap_basic',
             'ATR%',
@@ -205,5 +220,19 @@ def main_telegram():
 
 if __name__ == "__main__":
     main_telegram()
+
     # res_df = query_by_params()
-    # print(res_df)
+    # res_df['SMA20 / Close Ratio'] = res_df['SMA20'] / res_df['close']
+
+    # print(
+    #     res_df[
+    #         [
+    #             'name',
+    #             'close',
+    #             'change',
+    #             'ATR%',
+    #             'SMA20',
+    #             'SMA20 / Close Ratio'
+    #         ]
+    #     ].sort_values('SMA20 / Close Ratio', ascending=False).head(30)
+    # )
