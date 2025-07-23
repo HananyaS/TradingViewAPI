@@ -216,20 +216,20 @@ def main_telegram():
 
 
 if __name__ == "__main__":
-    # main_telegram()
+    main_telegram()
 
-    res_df = query_by_params()
-    res_df['SMA20 / Close Ratio'] = res_df['SMA20'] / res_df['close']
-
-    print(
-        res_df[
-            [
-                'name',
-                'close',
-                'change',
-                'ATR%',
-                'SMA20',
-                'SMA20 / Close Ratio'
-            ]
-        ].sort_values('SMA20 / Close Ratio', ascending=False).head(30)
-    )
+    # res_df = query_by_params()
+    # res_df['SMA20 / Close Ratio'] = res_df['SMA20'] / res_df['close']
+    #
+    # print(
+    #     res_df[
+    #         [
+    #             'name',
+    #             'close',
+    #             'change',
+    #             'ATR%',
+    #             'SMA20',
+    #             'SMA20 / Close Ratio'
+    #         ]
+    #     ].sort_values('SMA20 / Close Ratio', ascending=False).head(30)
+    # )
