@@ -2,6 +2,8 @@
 python-telegram-bot>=20.0
 tradingview-screener>=1.0.0
 pandas>=1.5.0
+flask>=2.3.0
+flask-cors>=4.0.0
 
 # Standard library imports (no need to install)
 # typing - built-in

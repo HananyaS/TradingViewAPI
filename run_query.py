@@ -107,7 +107,7 @@ def query_by_params(
         min_price=Defaults.MIN_PRICE,
         min_relative_volume=Defaults.MIN_RELATIVE_VOLUME,
         min_change=Defaults.MIN_CHANGE,
-        min_sma20_above_pct=Defaults.MIN_SMA20_ABOVE_PCT,
+        min_sma20_above_pct=Defaults.MIN_SMA20_ABOVE_PRICE_PCT,
         min_atr_pct=Defaults.MIN_ATR_PCT,
         min_adr_pct=Defaults.MIN_ADR_PCT,
         filter_out_otc=Defaults.FILTER_OUT_OTC,
@@ -216,20 +216,20 @@ def main_telegram():
 
 
 if __name__ == "__main__":
-    main_telegram()
+    # main_telegram()
 
-    # res_df = query_by_params()
-    # res_df['SMA20 / Close Ratio'] = res_df['SMA20'] / res_df['close']
+    res_df = query_by_params()
+    res_df['SMA20 / Close Ratio'] = res_df['SMA20'] / res_df['close']
 
-    # print(
-    #     res_df[
-    #         [
-    #             'name',
-    #             'close',
-    #             'change',
-    #             'ATR%',
-    #             'SMA20',
-    #             'SMA20 / Close Ratio'
-    #         ]
-    #     ].sort_values('SMA20 / Close Ratio', ascending=False).head(30)
-    # )
+    print(
+        res_df[
+            [
+                'name',
+                'close',
+                'change',
+                'ATR%',
+                'SMA20',
+                'SMA20 / Close Ratio'
+            ]
+        ].sort_values('SMA20 / Close Ratio', ascending=False).head(30)
+    )

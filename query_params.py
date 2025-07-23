@@ -47,7 +47,7 @@ PARAMS = [
         name='min_sma20_above_pct',
         prompt="Min SMA20/close ratio (e.g. 1.1 or '-'):",
         parser=parse_optional_float,
-        default=Defaults.MIN_SMA20_ABOVE_PCT,
+        default=Defaults.MIN_SMA20_ABOVE_PRICE_PCT,
     ),
     QueryParam(
         name='min_atr_pct',
