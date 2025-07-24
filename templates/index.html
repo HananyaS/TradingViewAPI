@@ -262,6 +262,21 @@
                             </button>
                         </div>
                     </div>
+
+                    <!-- Preview Table -->
+                    <div class="card mt-3" id="previewCard" style="display: none;">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="fas fa-table"></i> Preview (First 10 Rows)</h5>
+                            <div class="table-responsive">
+                                <table class="table table-striped table-bordered" id="previewTable">
+                                    <thead class="table-light">
+                                        <tr id="previewHeader"></tr>
+                                    </thead>
+                                    <tbody id="previewBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -335,11 +350,16 @@
                     document.getElementById('successAlert').style.display = 'block';
                     document.getElementById('errorAlert').style.display = 'none';
                     document.getElementById('downloadCard').style.display = 'block';
+
+                    // Render preview table
+                    renderPreviewTable(result.columns, result.preview);
+                    document.getElementById('previewCard').style.display = 'block';
                 } else {
                     document.getElementById('errorMessage').textContent = result.message;
                     document.getElementById('errorAlert').style.display = 'block';
                     document.getElementById('successAlert').style.display = 'none';
                     document.getElementById('downloadCard').style.display = 'none';
+                    document.getElementById('previewCard').style.display = 'none';
                 }
                 
             } catch (error) {
@@ -349,6 +369,7 @@
                 document.getElementById('errorAlert').style.display = 'block';
                 document.getElementById('successAlert').style.display = 'none';
                 document.getElementById('downloadCard').style.display = 'none';
+                document.getElementById('previewCard').style.display = 'none';
             }
         });
         
@@ -417,6 +438,37 @@
             document.getElementById('resultSection').style.display = 'none';
             currentCSVData = null;
             currentFilename = null;
+            document.getElementById('previewCard').style.display = 'none';
+        }
+
+        // Render preview table function
+        function renderPreviewTable(columns, rows) {
+            const header = document.getElementById('previewHeader');
+            const body = document.getElementById('previewBody');
+            header.innerHTML = '';
+            body.innerHTML = '';
+            if (!columns || !rows || rows.length === 0) {
+                document.getElementById('previewCard').style.display = 'none';
+                return;
+            }
+            // Render header
+            columns.forEach(col => {
+                const th = document.createElement('th');
+                th.textContent = col;
+                header.appendChild(th);
+            });
+            // Render rows
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                columns.forEach(col => {
+                    const td = document.createElement('td');
+                    let val = row[col];
+                    if (val === null || val === undefined) val = '';
+                    td.textContent = val;
+                    tr.appendChild(td);
+                });
+                body.appendChild(tr);
+            });
         }
     </script>
 </body>

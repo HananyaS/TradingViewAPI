@@ -3,6 +3,7 @@ from flask_cors import CORS
 import io
 import datetime
 import pandas as pd
+import math
 from run_query import query_by_params
 
 app = Flask(__name__)
@@ -57,13 +58,20 @@ def api_query():
         results.to_csv(csv_buffer, index=False)
         csv_buffer.seek(0)
         
-        # Create response with CSV data
+        # Prepare preview (first 10 rows as list of dicts, replace NaN/NA with None)
+        preview_df = results.head(10).replace({pd.NA: None, float('nan'): None, math.nan: None})
+        preview = preview_df.to_dict(orient='records')
+        columns = list(results.columns)
+        
+        # Create response with CSV data and preview
         response_data = {
             'success': True,
             'count': len(results),
             'message': f'Found {len(results)} symbols!',
             'csv_data': csv_buffer.getvalue(),
-            'filename': f"screener_results_{datetime.datetime.today().strftime('%Y%m%d')}.csv"
+            'filename': f"screener_results_{datetime.datetime.today().strftime('%Y%m%d')}.csv",
+            'preview': preview,
+            'columns': columns
         }
         
         return jsonify(response_data)
