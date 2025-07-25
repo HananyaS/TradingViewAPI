@@ -4,6 +4,7 @@ import io
 import datetime
 import pandas as pd
 import math
+import urllib.parse
 from run_query import query_by_params
 
 app = Flask(__name__)
@@ -53,15 +54,51 @@ def api_query():
                 'count': 0
             })
         
-        # Create CSV buffer
+        # Create TradingView links for stock names
+        def create_tradingview_link(row):
+            symbol = row['name']
+            exchange = row['exchange']
+            
+            # Map exchange names to TradingView format
+            exchange_mapping = {
+                'NASDAQ': 'NASDAQ',
+                'NYSE': 'NYSE',
+                'NYSE AMERICAN': 'NYSEAMERICAN',
+                'NYSE ARCA': 'NYSEARCA',
+                'CBOE': 'CBOE',
+                'CBOE BZX': 'CBOEBZX',
+                'CBOE BYX': 'CBOEBYX',
+                'CBOE EDGX': 'CBOEEDGX',
+                'CBOE EDGA': 'CBOEEDGA',
+                'IEX': 'IEX',
+                'OTC': 'OTC',
+                'OTC MARKETS': 'OTCMARKETS',
+                'PHILADELPHIA STOCK EXCHANGE': 'PHLX',
+                'NYSE CHICAGO': 'NYSECHICAGO',
+                'NATIONAL STOCK EXCHANGE': 'NSX',
+                'NASDAQ BX': 'NASDAQBX',
+                'BATS': 'BATS',
+                'INSTINET': 'INSTINET'
+            }
+            
+            tv_exchange = exchange_mapping.get(exchange, exchange)
+            encoded_symbol = urllib.parse.quote(f"{tv_exchange}:{symbol}")
+            return f"https://www.tradingview.com/chart/AL0YYsq6/?symbol={encoded_symbol}"
+        
+        # Add TradingView links to the results
+        results['tradingview_link'] = results.apply(create_tradingview_link, axis=1)
+        
+        # Create CSV buffer (without tradingview_link column for cleaner CSV)
+        csv_export_df = results.drop(columns=['tradingview_link'])
         csv_buffer = io.StringIO()
-        results.to_csv(csv_buffer, index=False)
+        csv_export_df.to_csv(csv_buffer, index=False)
         csv_buffer.seek(0)
         
         # Prepare preview (first 10 rows as list of dicts, replace NaN/NA with None)
         preview_df = results.head(10).replace({pd.NA: None, float('nan'): None, math.nan: None})
         preview = preview_df.to_dict(orient='records')
-        columns = list(results.columns)
+        # Remove tradingview_link column from preview columns but keep it in the data for links
+        preview_columns = [col for col in results.columns if col != 'tradingview_link']
         
         # Create response with CSV data and preview
         response_data = {
@@ -71,7 +108,7 @@ def api_query():
             'csv_data': csv_buffer.getvalue(),
             'filename': f"screener_results_{datetime.datetime.today().strftime('%Y%m%d')}.csv",
             'preview': preview,
-            'columns': columns
+            'columns': preview_columns
         }
         
         return jsonify(response_data)

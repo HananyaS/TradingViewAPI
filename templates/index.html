@@ -133,6 +133,29 @@
         .toggle-btn:hover {
             border-color: #667eea;
         }
+        
+        .stock-link {
+            color: #667eea !important;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .stock-link:hover {
+            text-decoration: underline !important;
+            color: #5a67d8 !important;
+        }
+        
+        .table td a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .table td a:hover {
+            text-decoration: underline;
+            color: #5a67d8;
+        }
     </style>
 </head>
 <body>
@@ -464,7 +487,18 @@
                     const td = document.createElement('td');
                     let val = row[col];
                     if (val === null || val === undefined) val = '';
-                    td.textContent = val;
+                    
+                    // Check if this is the name column and we have a tradingview_link
+                    if (col === 'name' && row['tradingview_link']) {
+                        const link = document.createElement('a');
+                        link.href = row['tradingview_link'];
+                        link.target = '_blank';
+                        link.textContent = val;
+                        link.className = 'stock-link';
+                        td.appendChild(link);
+                    } else {
+                        td.textContent = val;
+                    }
                     tr.appendChild(td);
                 });
                 body.appendChild(tr);
