@@ -74,14 +74,21 @@ def api_query():
                 'PHILADELPHIA STOCK EXCHANGE': 'PHLX',
                 'NYSE CHICAGO': 'NYSECHICAGO',
                 'NATIONAL STOCK EXCHANGE': 'NSX',
-                'NASDAQ BX': 'NASDAQBX',
+                'NASDAQBX': 'NASDAQBX',
                 'BATS': 'BATS',
                 'INSTINET': 'INSTINET'
             }
             
             tv_exchange = exchange_mapping.get(exchange, exchange)
-            encoded_symbol = urllib.parse.quote(f"{tv_exchange}:{symbol}")
-            return f"https://www.tradingview.com/chart/AL0YYsq6/?symbol={encoded_symbol}"
+            
+            # Create a more mobile-friendly TradingView link
+            # Use the symbol format that works better with mobile apps
+            symbol_pair = f"{tv_exchange}:{symbol}"
+            encoded_symbol = urllib.parse.quote(symbol_pair)
+            
+            # Use a simpler, more reliable link format that works better on mobile
+            # This format is more compatible with TradingView mobile apps
+            return f"https://www.tradingview.com/symbols/{encoded_symbol}/"
         
         # Add TradingView links to the results
         results['tradingview_link'] = results.apply(create_tradingview_link, axis=1)
