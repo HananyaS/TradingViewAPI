@@ -99,21 +99,21 @@ def api_query():
         csv_export_df.to_csv(csv_buffer, index=False)
         csv_buffer.seek(0)
         
-        # Prepare preview (first 10 rows as list of dicts, replace NaN/NA with None)
-        preview_df = results.head(10).replace({pd.NA: None, float('nan'): None, math.nan: None})
-        preview = preview_df.to_dict(orient='records')
-        # Remove tradingview_link column from preview columns but keep it in the data for links
-        preview_columns = [col for col in results.columns if col != 'tradingview_link']
+        # Prepare all data (replace NaN/NA with None)
+        all_data_df = results.replace({pd.NA: None, float('nan'): None, math.nan: None})
+        all_data = all_data_df.to_dict(orient='records')
+        # Remove tradingview_link column from display columns but keep it in the data for links
+        display_columns = [col for col in results.columns if col != 'tradingview_link']
         
-        # Create response with CSV data and preview
+        # Create response with CSV data and all results
         response_data = {
             'success': True,
             'count': len(results),
             'message': f'Found {len(results)} symbols!',
             'csv_data': csv_buffer.getvalue(),
             'filename': f"screener_results_{datetime.datetime.today().strftime('%Y%m%d')}.csv",
-            'preview': preview,
-            'columns': preview_columns
+            'data': all_data,
+            'columns': display_columns
         }
         
         return jsonify(response_data)
