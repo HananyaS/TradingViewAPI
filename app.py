@@ -83,12 +83,12 @@ def api_query():
             
             # Create a more mobile-friendly TradingView link
             # Use the symbol format that works better with mobile apps
-            symbol_pair = f"{tv_exchange}:{symbol}"
+            # Format: EXCHANGE-SYMBOL (with hyphen, not colon)
+            symbol_pair = f"{tv_exchange}-{symbol}"
             encoded_symbol = urllib.parse.quote(symbol_pair)
             
-            # Use a simpler, more reliable link format that works better on mobile
-            # This format is more compatible with TradingView mobile apps
-            return f"https://www.tradingview.com/symbols/{encoded_symbol}/"
+            # Use the format that works with mobile apps, including UTM parameters
+            return f"https://www.tradingview.com/symbols/{encoded_symbol}/?utm_source=androidapp&utm_medium=share"
         
         # Add TradingView links to the results
         results['tradingview_link'] = results.apply(create_tradingview_link, axis=1)
