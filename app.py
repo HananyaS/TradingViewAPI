@@ -30,9 +30,7 @@ def api_query():
         filter_out_otc = data.get('filter_out_otc', True)
         bullish_candlestick_patterns_only = data.get('bullish_candlestick_patterns_only', False)
         
-        # Convert percentage values
-        if min_change is not None:
-            min_change = min_change / 100
+
         
         # Call the existing query function
         results = query_by_params(
