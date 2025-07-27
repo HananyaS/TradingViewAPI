@@ -184,14 +184,107 @@
             border: 1px solid #dee2e6;
             border-radius: 0.375rem;
         }
+        
+        /* Saved screeners styling */
+        #savedScreenersList .card {
+            border: 1px solid #e9ecef;
+            transition: all 0.2s ease;
+            margin-bottom: 1rem;
+        }
+        
+        #savedScreenersList .card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+            transform: translateY(-2px);
+        }
+        
+        #savedScreenersList .card-title {
+            color: #495057;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        #savedScreenersList .card-text {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        
+        #savedScreenersList .badge {
+            background-color: #667eea !important;
+            color: white !important;
+            margin-right: 0.25rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        #savedScreenersList .btn-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        #savedScreenersList .btn {
+            flex: 1;
+            min-width: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+        }
+        
+        .screener-params {
+            background-color: #f8f9fa;
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            margin-top: 0.75rem;
+            font-size: 0.85rem;
+        }
+        
+        .screener-params h6 {
+            color: #495057;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .param-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem;
+        }
+        
+        .param-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.25rem 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .param-item:last-child {
+            border-bottom: none;
+        }
+        
+        .param-label {
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        .param-value {
+            color: #667eea;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="main-container">
             <div class="header">
-                <h1><i class="fas fa-chart-line"></i> TradingView Screener</h1>
-                <p class="mb-0">Filter and analyze stocks with advanced criteria</p>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h1><i class="fas fa-chart-line"></i> TradingView Screener</h1>
+                        <p class="mb-0">Filter and analyze stocks with advanced criteria</p>
+                    </div>
+                    <button type="button" class="btn btn-outline-light" onclick="showSavedScreenersModal()">
+                        <i class="fas fa-bookmark"></i> Saved Screeners
+                    </button>
+                </div>
             </div>
             
             <div class="form-container">
@@ -268,7 +361,7 @@
                     <div class="form-group">
                         <label class="form-label">Only Bullish Candlestick Patterns</label>
                         <div class="toggle-group">
-                            <div class="toggle-btn" data-value="false">No</div>
+                            <div class="toggle-btn active" data-value="false">No</div>
                             <div class="toggle-btn" data-value="true">Yes</div>
                         </div>
                         <input type="hidden" id="bullish_candlestick_patterns_only" name="bullish_candlestick_patterns_only" value="false">
@@ -308,9 +401,14 @@
                                 <i class="fas fa-download"></i> Download Results
                             </h5>
                             <p class="card-text">Click the button below to download your CSV file</p>
-                            <button type="button" class="btn btn-primary" onclick="downloadCSV()">
-                                <i class="fas fa-file-csv"></i> Download CSV
-                            </button>
+                            <div class="d-flex gap-2 justify-content-center">
+                                <button type="button" class="btn btn-primary" onclick="downloadCSV()">
+                                    <i class="fas fa-file-csv"></i> Download CSV
+                                </button>
+                                <button type="button" class="btn btn-success" onclick="showSaveScreenerModal()">
+                                    <i class="fas fa-save"></i> Save Screener
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -377,6 +475,9 @@
                     data[key] = value;
                 }
             }
+            
+            // Store current screener parameters for saving
+            currentScreenerParams = { ...data };
             
             // Show loading
             document.getElementById('loading').style.display = 'block';
@@ -481,14 +582,8 @@
                     }
                 });
                 
-                // Special handling for bullish candlestick patterns (second button should be active)
-                if (hiddenInput.id === 'bullish_candlestick_patterns_only') {
-                    buttons[1].classList.add('active');
-                    buttons[0].classList.remove('active');
-                    hiddenInput.value = 'false';
-                } else {
-                    hiddenInput.value = buttons[0].dataset.value;
-                }
+                // Set the hidden input value based on the active button
+                hiddenInput.value = buttons[0].dataset.value;
             });
             
             // Clear results
@@ -497,6 +592,7 @@
             currentFilename = null;
             currentData = null;
             currentColumns = null;
+            currentScreenerParams = null;
             sortColumn = null;
             sortDirection = 'asc';
             document.getElementById('resultsCard').style.display = 'none';
@@ -632,6 +728,464 @@
                 }
             });
         }
+        
+        // Screener management functions
+        let currentScreenerParams = null;
+        let currentScreenerToDelete = null;
+        
+        // Show save screener modal
+        function showSaveScreenerModal() {
+            if (!currentScreenerParams) {
+                alert('No screener parameters to save. Please run a screener first.');
+                return;
+            }
+            
+            // Clear form
+            document.getElementById('saveScreenerForm').reset();
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('saveScreenerModal'));
+            modal.show();
+        }
+        
+        // Save screener
+        async function saveScreener() {
+            const name = document.getElementById('screenerName').value.trim();
+            const owner = document.getElementById('screenerOwner').value.trim();
+            const tags = document.getElementById('screenerTags').value.trim();
+            
+            if (!name || !owner) {
+                alert('Please fill in the name and owner fields.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/screeners', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        owner: owner,
+                        tags: tags,
+                        params: currentScreenerParams
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Screener saved successfully!');
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('saveScreenerModal'));
+                    modal.hide();
+                } else {
+                    alert('Error saving screener: ' + result.message);
+                }
+            } catch (error) {
+                alert('Error saving screener: ' + error.message);
+            }
+        }
+        
+        // Show saved screeners modal
+        function showSavedScreenersModal() {
+            loadSavedScreeners();
+            const modalElement = document.getElementById('savedScreenersModal');
+            const modal = new bootstrap.Modal(modalElement);
+            
+            // Set up search listener when modal is shown
+            modalElement.addEventListener('shown.bs.modal', function() {
+                setupSearchListener();
+            }, { once: true });
+            
+            modal.show();
+        }
+        
+        // Load saved screeners
+        async function loadSavedScreeners() {
+            try {
+                const response = await fetch('/api/screeners');
+                const result = await response.json();
+                
+                if (result.success) {
+                    renderSavedScreeners(result.screeners);
+                } else {
+                    alert('Error loading screeners: ' + result.message);
+                }
+            } catch (error) {
+                alert('Error loading screeners: ' + error.message);
+            }
+        }
+        
+        // Render saved screeners
+        function renderSavedScreeners(screeners) {
+            const container = document.getElementById('savedScreenersList');
+            
+            if (screeners.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center">No saved screeners found.</p>';
+                return;
+            }
+            
+            let html = '';
+            screeners.forEach(screener => {
+                const tags = screener.tags ? screener.tags.split(',').map(tag => `<span class="badge">${tag.trim()}</span>`).join('') : '';
+                const createdDate = new Date(screener.created_at).toLocaleDateString();
+                
+                // Format parameters for display
+                const params = screener.params || {};
+                const paramEntries = Object.entries(params).filter(([key, value]) => value !== null && value !== undefined);
+                
+                let paramsHtml = '';
+                if (paramEntries.length > 0) {
+                    paramsHtml = `
+                        <div class="screener-params">
+                            <h6><i class="fas fa-cog"></i> Parameters</h6>
+                            <div class="param-grid">
+                                ${paramEntries.map(([key, value]) => `
+                                    <div class="param-item">
+                                        <span class="param-label">${formatParamName(key)}</span>
+                                        <span class="param-value">${formatParamValue(value)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="flex-grow-1">
+                                    <h6 class="card-title">${screener.name}</h6>
+                                    <p class="card-text">
+                                        <i class="fas fa-user"></i> ${screener.owner} | 
+                                        <i class="fas fa-calendar"></i> ${createdDate}
+                                    </p>
+                                    <div class="mb-3">${tags}</div>
+                                </div>
+                                <div class="btn-group">
+                                    <button type="button" class="btn btn-primary" onclick="loadScreener('${screener._id}')">
+                                        <i class="fas fa-play"></i> Run
+                                    </button>
+                                    <button type="button" class="btn btn-danger" onclick="showDeleteScreenerModal('${screener._id}', '${screener.name}')">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                </div>
+                            </div>
+                            ${paramsHtml}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        // Format parameter names for display
+        function formatParamName(key) {
+            const nameMap = {
+                'us_exchanges_only': 'US Exchanges Only',
+                'min_price': 'Min Price',
+                'min_relative_volume': 'Min Relative Volume',
+                'min_change': 'Min % Change',
+                'min_sma20_above_pct': 'Min SMA20/Close Ratio',
+                'min_atr_pct': 'Min ATR %',
+                'min_adr_pct': 'Min ADR %',
+                'filter_out_otc': 'Filter Out OTC',
+                'bullish_candlestick_patterns_only': 'Bullish Patterns Only'
+            };
+            return nameMap[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
+        
+        // Format parameter values for display
+        function formatParamValue(value) {
+            if (typeof value === 'boolean') {
+                return value ? 'Yes' : 'No';
+            } else if (typeof value === 'number') {
+                return value.toString();
+            } else if (value === null || value === undefined) {
+                return 'Not set';
+            } else {
+                return value.toString();
+            }
+        }
+        
+        // Load and run a saved screener
+        async function loadScreener(screenerId) {
+            try {
+                const response = await fetch(`/api/screeners/${screenerId}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    const screener = result.screener;
+                    
+                    // Fill form with screener parameters
+                    fillFormWithParams(screener.params);
+                    
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('savedScreenersModal'));
+                    modal.hide();
+                    
+                    // Show loading indicator
+                    document.getElementById('loading').style.display = 'block';
+                    document.getElementById('resultSection').style.display = 'none';
+                    
+                    // Run the screener automatically
+                    await runScreenerWithParams(screener.params);
+                    
+                    // Show success message
+                    const successAlert = document.getElementById('successAlert');
+                    const successMessage = document.getElementById('successMessage');
+                    successMessage.textContent = `Loaded and ran screener: ${screener.name}`;
+                    successAlert.style.display = 'block';
+                    document.getElementById('errorAlert').style.display = 'none';
+                    
+                } else {
+                    alert('Error loading screener: ' + result.message);
+                }
+            } catch (error) {
+                alert('Error loading screener: ' + error.message);
+            }
+        }
+        
+        // Run screener with parameters
+        async function runScreenerWithParams(params) {
+            try {
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(params)
+                });
+                
+                const result = await response.json();
+                
+                // Hide loading
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('resultSection').style.display = 'block';
+                
+                if (result.success) {
+                    currentCSVData = result.csv_data;
+                    currentFilename = result.filename;
+                    currentData = result.data;
+                    currentColumns = result.columns;
+                    currentScreenerParams = { ...params };
+                    
+                    document.getElementById('downloadCard').style.display = 'block';
+                    
+                    // Render results table
+                    renderResultsTable(result.columns, result.data);
+                    document.getElementById('resultsCard').style.display = 'block';
+                } else {
+                    document.getElementById('errorMessage').textContent = result.message;
+                    document.getElementById('errorAlert').style.display = 'block';
+                    document.getElementById('successAlert').style.display = 'none';
+                    document.getElementById('downloadCard').style.display = 'none';
+                    document.getElementById('resultsCard').style.display = 'none';
+                }
+                
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('resultSection').style.display = 'block';
+                document.getElementById('errorMessage').textContent = 'An error occurred while processing your request.';
+                document.getElementById('errorAlert').style.display = 'block';
+                document.getElementById('successAlert').style.display = 'none';
+                document.getElementById('downloadCard').style.display = 'none';
+                document.getElementById('resultsCard').style.display = 'none';
+            }
+        }
+        
+        // Fill form with parameters
+        function fillFormWithParams(params) {
+            // Reset form first
+            document.getElementById('screenerForm').reset();
+            
+            // Fill numeric inputs
+            Object.keys(params).forEach(key => {
+                const input = document.getElementById(key);
+                if (input && params[key] !== null) {
+                    input.value = params[key];
+                }
+            });
+            
+            // Handle toggle buttons
+            document.querySelectorAll('.toggle-group').forEach(group => {
+                const buttons = group.querySelectorAll('.toggle-btn');
+                const hiddenInput = group.parentElement.querySelector('input[type="hidden"]');
+                const paramName = hiddenInput.id;
+                
+                if (params[paramName] !== undefined) {
+                    buttons.forEach(btn => {
+                        btn.classList.remove('active');
+                        if (btn.dataset.value === params[paramName].toString()) {
+                            btn.classList.add('active');
+                        }
+                    });
+                    hiddenInput.value = params[paramName].toString();
+                }
+            });
+        }
+        
+        // Show delete screener modal
+        function showDeleteScreenerModal(screenerId, screenerName) {
+            currentScreenerToDelete = screenerId;
+            document.getElementById('deleteScreenerName').textContent = screenerName;
+            document.getElementById('confirmationName').value = '';
+            
+            const modal = new bootstrap.Modal(document.getElementById('deleteScreenerModal'));
+            modal.show();
+        }
+        
+        // Confirm delete screener
+        async function confirmDeleteScreener() {
+            const confirmationName = document.getElementById('confirmationName').value.trim();
+            
+            if (!confirmationName) {
+                alert('Please enter the screener name to confirm deletion.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/screeners/${currentScreenerToDelete}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        confirmation_name: confirmationName
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Screener deleted successfully!');
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('deleteScreenerModal'));
+                    modal.hide();
+                    
+                    // Reload saved screeners
+                    loadSavedScreeners();
+                } else {
+                    alert('Error deleting screener: ' + result.message);
+                }
+            } catch (error) {
+                alert('Error deleting screener: ' + error.message);
+            }
+        }
+        
+        // Search screeners function
+        function setupSearchListener() {
+            const searchInput = document.getElementById('searchScreeners');
+            if (searchInput) {
+                // Remove existing listener to avoid duplicates
+                searchInput.removeEventListener('input', handleSearch);
+                // Add new listener
+                searchInput.addEventListener('input', handleSearch);
+            }
+        }
+        
+        // Handle search input
+        async function handleSearch(e) {
+            const searchTerm = e.target.value.trim();
+            
+            try {
+                const url = searchTerm ? `/api/screeners?search=${encodeURIComponent(searchTerm)}` : '/api/screeners';
+                const response = await fetch(url);
+                const result = await response.json();
+                
+                if (result.success) {
+                    renderSavedScreeners(result.screeners);
+                }
+            } catch (error) {
+                console.error('Error searching screeners:', error);
+            }
+        }
     </script>
+    
+    <!-- Save Screener Modal -->
+    <div class="modal fade" id="saveScreenerModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-save"></i> Save Screener</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="saveScreenerForm">
+                        <div class="mb-3">
+                            <label for="screenerName" class="form-label">Screener Name *</label>
+                            <input type="text" class="form-control" id="screenerName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="screenerOwner" class="form-label">Owner *</label>
+                            <input type="text" class="form-control" id="screenerOwner" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="screenerTags" class="form-label">Tags</label>
+                            <input type="text" class="form-control" id="screenerTags" 
+                                   placeholder="e.g., momentum, tech, growth">
+                            <div class="form-text">Separate tags with commas (optional)</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" onclick="saveScreener()">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Saved Screeners Modal -->
+    <div class="modal fade" id="savedScreenersModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-bookmark"></i> Saved Screeners</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <input type="text" class="form-control" id="searchScreeners" 
+                               placeholder="Search screeners by name, owner, or tags...">
+                    </div>
+                    <div id="savedScreenersList">
+                        <!-- Screeners will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Delete Screener Modal -->
+    <div class="modal fade" id="deleteScreenerModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title text-danger"><i class="fas fa-trash"></i> Delete Screener</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete the screener "<span id="deleteScreenerName"></span>"?</p>
+                    <p class="text-danger">This action cannot be undone.</p>
+                    <div class="mb-3">
+                        <label for="confirmationName" class="form-label">Type the screener name to confirm:</label>
+                        <input type="text" class="form-control" id="confirmationName" 
+                               placeholder="Enter screener name to confirm deletion">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmDeleteScreener()">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html> 

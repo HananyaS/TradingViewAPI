@@ -6,6 +6,7 @@ import pandas as pd
 import math
 import urllib.parse
 from run_query import query_by_params
+from mongodb_config import mongodb_manager
 
 app = Flask(__name__)
 CORS(app)
@@ -149,6 +150,126 @@ def download_csv():
         
     except Exception as e:
         return jsonify({'error': f'Error creating download: {str(e)}'}), 500
+
+@app.route('/api/screeners', methods=['GET'])
+def get_screeners():
+    """Get all saved screeners"""
+    try:
+        search_term = request.args.get('search', '')
+        if search_term:
+            screeners = mongodb_manager.search_screeners(search_term)
+        else:
+            screeners = mongodb_manager.get_all_screeners()
+        
+        return jsonify({
+            'success': True,
+            'screeners': screeners
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error retrieving screeners: {str(e)}'
+        }), 500
+
+@app.route('/api/screeners', methods=['POST'])
+def save_screener():
+    """Save a new screener"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['name', 'owner', 'params']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({
+                    'success': False,
+                    'message': f'Missing required field: {field}'
+                }), 400
+        
+        # Handle optional tags
+        tags = data.get('tags', '').strip()
+        if not tags:
+            tags = ''  # Empty string for no tags
+        
+        # Save screener
+        screener_id = mongodb_manager.save_screener(
+            name=data['name'],
+            owner=data['owner'],
+            tags=data['tags'],
+            params=data['params']
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Screener saved successfully!',
+            'screener_id': screener_id
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error saving screener: {str(e)}'
+        }), 500
+
+@app.route('/api/screeners/<screener_id>', methods=['GET'])
+def get_screener(screener_id):
+    """Get a specific screener by ID"""
+    try:
+        screener = mongodb_manager.get_screener_by_id(screener_id)
+        if screener:
+            return jsonify({
+                'success': True,
+                'screener': screener
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Screener not found'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error retrieving screener: {str(e)}'
+        }), 500
+
+@app.route('/api/screeners/<screener_id>', methods=['DELETE'])
+def delete_screener(screener_id):
+    """Delete a screener"""
+    try:
+        data = request.get_json()
+        confirmation_name = data.get('confirmation_name', '')
+        
+        # Get the screener to check the name
+        screener = mongodb_manager.get_screener_by_id(screener_id)
+        if not screener:
+            return jsonify({
+                'success': False,
+                'message': 'Screener not found'
+            }), 404
+        
+        # Check if confirmation name matches
+        if confirmation_name != screener['name']:
+            return jsonify({
+                'success': False,
+                'message': 'Confirmation name does not match screener name'
+            }), 400
+        
+        # Delete the screener
+        success = mongodb_manager.delete_screener(screener_id)
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Screener deleted successfully!'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Error deleting screener'
+            }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error deleting screener: {str(e)}'
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
