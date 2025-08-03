@@ -282,9 +282,20 @@
                         <h1><i class="fas fa-chart-line"></i> TradingView Screener</h1>
                         <p class="mb-0">Filter and analyze stocks with advanced criteria</p>
                     </div>
-                    <button type="button" class="btn btn-outline-light" onclick="showSavedScreenersModal()">
-                        <i class="fas fa-bookmark"></i> Saved Screeners
-                    </button>
+                    <div class="d-flex align-items-center gap-2">
+                        <div id="userInfo" style="display: none;">
+                            <span class="text-white me-2" id="userName"></span>
+                            <button type="button" class="btn btn-outline-light btn-sm" onclick="logout()">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </button>
+                        </div>
+                        <button type="button" class="btn btn-outline-light" onclick="showSavedScreenersModal()" id="savedScreenersBtn">
+                            <i class="fas fa-bookmark"></i> Saved Screeners
+                        </button>
+                        <button type="button" class="btn btn-outline-light" onclick="login()" id="loginBtn">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -440,6 +451,54 @@
         let currentColumns = null;
         let sortColumn = null;
         let sortDirection = 'asc';
+        let currentUser = null;
+        
+        // Authentication functions
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/user');
+                const user = await response.json();
+                
+                if (user.authenticated === false) {
+                    // User not authenticated
+                    document.getElementById('userInfo').style.display = 'none';
+                    document.getElementById('loginBtn').style.display = 'inline-block';
+                    document.getElementById('savedScreenersBtn').style.display = 'none';
+                    currentUser = null;
+                } else {
+                    // User authenticated
+                    document.getElementById('userInfo').style.display = 'flex';
+                    document.getElementById('userName').textContent = user.name || user.email;
+                    document.getElementById('loginBtn').style.display = 'none';
+                    document.getElementById('savedScreenersBtn').style.display = 'inline-block';
+                    currentUser = user;
+                }
+            } catch (error) {
+                console.error('Error checking auth:', error);
+            }
+        }
+        
+        function login() {
+            window.location.href = '/login';
+        }
+        
+        function logout() {
+            window.location.href = '/logout';
+        }
+        
+        // Check authentication on page load
+        checkAuth();
+        
+        // Check for error parameters in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const error = urlParams.get('error');
+        
+        if (error) {
+            // Show error alert
+            document.getElementById('errorMessage').textContent = decodeURIComponent(error);
+            document.getElementById('errorAlert').style.display = 'block';
+            document.getElementById('successAlert').style.display = 'none';
+        }
         
         // Toggle button functionality
         document.querySelectorAll('.toggle-group').forEach(group => {
@@ -744,6 +803,32 @@
             // Clear form
             document.getElementById('saveScreenerForm').reset();
             
+            // Set default visibility to public
+            document.getElementById('screenerVisibility').value = 'true';
+            const toggleGroup = document.querySelector('#saveScreenerModal .toggle-group');
+            const buttons = toggleGroup.querySelectorAll('.toggle-btn');
+            buttons.forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.value === 'true') {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // Initialize toggle buttons in the modal
+            const modalToggleGroups = document.querySelectorAll('#saveScreenerModal .toggle-group');
+            modalToggleGroups.forEach(group => {
+                const buttons = group.querySelectorAll('.toggle-btn');
+                const hiddenInput = group.parentElement.querySelector('input[type="hidden"]');
+                
+                buttons.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        buttons.forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        hiddenInput.value = btn.dataset.value;
+                    });
+                });
+            });
+            
             // Show modal
             const modal = new bootstrap.Modal(document.getElementById('saveScreenerModal'));
             modal.show();
@@ -752,15 +837,21 @@
         // Save screener
         async function saveScreener() {
             const name = document.getElementById('screenerName').value.trim();
-            const owner = document.getElementById('screenerOwner').value.trim();
             const tags = document.getElementById('screenerTags').value.trim();
             
-            if (!name || !owner) {
-                alert('Please fill in the name and owner fields.');
+            if (!name) {
+                alert('Please fill in the screener name.');
+                return;
+            }
+            
+            if (!currentUser) {
+                alert('Please log in to save screeners.');
                 return;
             }
             
             try {
+                const visibility = document.getElementById('screenerVisibility').value === 'true';
+                
                 const response = await fetch('/api/screeners', {
                     method: 'POST',
                     headers: {
@@ -768,9 +859,10 @@
                     },
                     body: JSON.stringify({
                         name: name,
-                        owner: owner,
+                        owner: currentUser.name || currentUser.email,
                         tags: tags,
-                        params: currentScreenerParams
+                        params: currentScreenerParams,
+                        is_public: visibility
                     })
                 });
                 
@@ -853,6 +945,10 @@
                     `;
                 }
                 
+                const visibilityBadge = screener.is_public ? 
+                    '<span class="badge bg-success"><i class="fas fa-globe"></i> Public</span>' : 
+                    '<span class="badge bg-secondary"><i class="fas fa-lock"></i> Private</span>';
+                
                 html += `
                     <div class="card">
                         <div class="card-body">
@@ -862,6 +958,7 @@
                                     <p class="card-text">
                                         <i class="fas fa-user"></i> ${screener.owner} | 
                                         <i class="fas fa-calendar"></i> ${createdDate}
+                                        ${visibilityBadge}
                                     </p>
                                     <div class="mb-3">${tags}</div>
                                 </div>
@@ -1119,15 +1216,21 @@
                             <label for="screenerName" class="form-label">Screener Name *</label>
                             <input type="text" class="form-control" id="screenerName" required>
                         </div>
-                        <div class="mb-3">
-                            <label for="screenerOwner" class="form-label">Owner *</label>
-                            <input type="text" class="form-control" id="screenerOwner" required>
-                        </div>
+
                         <div class="mb-3">
                             <label for="screenerTags" class="form-label">Tags</label>
                             <input type="text" class="form-control" id="screenerTags" 
                                    placeholder="e.g., momentum, tech, growth">
                             <div class="form-text">Separate tags with commas (optional)</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Visibility</label>
+                            <div class="toggle-group">
+                                <div class="toggle-btn" data-value="false">Private</div>
+                                <div class="toggle-btn active" data-value="true">Public</div>
+                            </div>
+                            <input type="hidden" id="screenerVisibility" name="screenerVisibility" value="true">
+                            <div class="form-text">Public screeners can be seen by all users</div>
                         </div>
                     </form>
                 </div>

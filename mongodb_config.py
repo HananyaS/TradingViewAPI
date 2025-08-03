@@ -184,17 +184,19 @@ class MongoDBManager:
             screener_copy['updated_at'] = screener_copy['updated_at'].isoformat()
         return screener_copy
     
-    def save_screener(self, name, owner, tags, params):
+    def save_screener(self, name, owner, tags, params, user_id=None, is_public=False):
         """Save a screener configuration"""
         # Check if using file storage
         if hasattr(self, 'file_storage'):
-            return self.file_storage.save_screener(name, owner, tags, params)
+            return self.file_storage.save_screener(name, owner, tags, params, user_id, is_public)
             
         screener_data = {
             'name': name,
             'owner': owner,
             'tags': tags,
             'params': params,
+            'user_id': user_id,
+            'is_public': is_public,
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow()
         }
@@ -210,15 +212,28 @@ class MongoDBManager:
             self._fallback_storage.append(screener_data)
             return str(self._fallback_counter)
     
-    def get_all_screeners(self):
-        """Get all saved screeners"""
+    def get_all_screeners(self, user_id=None, include_public=True):
+        """Get all saved screeners with user filtering"""
         # Check if using file storage
         if hasattr(self, 'file_storage'):
-            return self.file_storage.get_all_screeners()
+            return self.file_storage.get_all_screeners(user_id, include_public)
             
         if self.screeners_collection is not None:
-            # Use MongoDB
-            screeners = list(self.screeners_collection.find().sort('created_at', -1))
+            # Use MongoDB with filtering
+            query = {}
+            if user_id:
+                # Get user's screeners and public screeners
+                query = {
+                    '$or': [
+                        {'user_id': user_id},
+                        {'is_public': True}
+                    ]
+                } if include_public else {'user_id': user_id}
+            elif not include_public:
+                # If no user_id and not including public, return empty
+                return []
+            
+            screeners = list(self.screeners_collection.find(query).sort('created_at', -1))
             # Convert ObjectId to string for JSON serialization
             for screener in screeners:
                 screener['_id'] = str(screener['_id'])
@@ -226,9 +241,21 @@ class MongoDBManager:
                 screener['updated_at'] = screener['updated_at'].isoformat()
             return screeners
         else:
-            # Use fallback storage
-            # First, ensure all dates are strings for consistent sorting
-            screeners = [self._ensure_string_dates(screener) for screener in self._fallback_storage]
+            # Use fallback storage with filtering
+            screeners = []
+            for screener in self._fallback_storage:
+                # Apply filtering logic
+                if user_id:
+                    if include_public:
+                        if screener.get('user_id') == user_id or screener.get('is_public', False):
+                            screeners.append(self._ensure_string_dates(screener))
+                    else:
+                        if screener.get('user_id') == user_id:
+                            screeners.append(self._ensure_string_dates(screener))
+                elif include_public:
+                    # No user_id but include public screeners
+                    if screener.get('is_public', False):
+                        screeners.append(self._ensure_string_dates(screener))
             
             # Sort by created_at (now all strings)
             screeners.sort(key=lambda x: x['created_at'], reverse=True)

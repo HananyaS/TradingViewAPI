@@ -6,6 +6,15 @@ flask>=2.3.0
 flask-cors>=4.0.0
 pymongo>=4.0.0
 
+# Google OAuth dependencies
+google-auth>=2.23.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+requests>=2.31.0
+
+# Local development
+python-dotenv>=1.0.0
+
 # SSL/TLS dependencies for MongoDB Atlas
 certifi>=2023.7.22
 urllib3>=2.0.0

@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, render_template
+from flask import Flask, request, jsonify, send_file, render_template, session, redirect, url_for
 from flask_cors import CORS
 import io
 import datetime
@@ -7,14 +7,80 @@ import math
 import urllib.parse
 from run_query import query_by_params
 from mongodb_config import mongodb_manager
+from google_oauth import create_oauth_flow, login_required, get_user_info, verify_google_token
 import os
 
+# Load environment variables from .env file for local development
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Loaded environment variables from .env file")
+except ImportError:
+    print("⚠️ python-dotenv not installed. Install with: pip install python-dotenv")
+except FileNotFoundError:
+    print("⚠️ .env file not found. Run: python local_setup.py")
+
+# Allow OAuth2 to work with HTTP for local development
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
 app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 CORS(app)
 
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/login')
+def login():
+    """Initiate Google OAuth login"""
+    try:
+        flow = create_oauth_flow()
+        authorization_url, state = flow.authorization_url()
+        session['state'] = state
+        print(f"Redirecting to: {authorization_url}")
+        return redirect(authorization_url)
+    except Exception as e:
+        print(f"Login error: {e}")
+        return redirect(url_for('index', error=f'Login error: {str(e)}'))
+
+@app.route('/oauth2callback')
+def oauth2callback():
+    """Handle Google OAuth callback"""
+    try:
+        flow = create_oauth_flow()
+        flow.fetch_token(authorization_response=request.url)
+        
+        # Get user info from Google
+        credentials = flow.credentials
+        id_info = verify_google_token(credentials.id_token)
+        
+        if id_info:
+            # Store user info in session
+            session['user_id'] = id_info['user_id']
+            session['email'] = id_info['email']
+            session['name'] = id_info['name']
+            session['picture'] = id_info['picture']
+            return redirect(url_for('index'))
+        else:
+            return redirect(url_for('index', error='Invalid Google token. Please try again.'))
+            
+    except Exception as e:
+        error_msg = f'OAuth Error: {str(e)}'
+        print(f"OAuth Error: {e}")
+        return redirect(url_for('index', error=error_msg))
+
+@app.route('/logout')
+def logout():
+    """Logout user"""
+    session.clear()
+    return redirect(url_for('index'))
+
+@app.route('/api/user')
+def get_user():
+    """Get current user information"""
+    user_info = get_user_info()
+    return jsonify(user_info if user_info else {'authenticated': False})
 
 @app.route('/favicon.ico')
 def favicon():
@@ -162,13 +228,22 @@ def download_csv():
 
 @app.route('/api/screeners', methods=['GET'])
 def get_screeners():
-    """Get all saved screeners"""
+    """Get all saved screeners with user filtering"""
     try:
+        user_info = get_user_info()
+        user_id = user_info['user_id'] if user_info else None
+        include_public = request.args.get('include_public', 'true').lower() == 'true'
         search_term = request.args.get('search', '')
+        
         if search_term:
             screeners = mongodb_manager.search_screeners(search_term)
+            # Apply user filtering to search results
+            if user_id:
+                screeners = [s for s in screeners if s.get('user_id') == user_id or s.get('is_public', False)]
+            elif not include_public:
+                screeners = [s for s in screeners if s.get('is_public', False)]
         else:
-            screeners = mongodb_manager.get_all_screeners()
+            screeners = mongodb_manager.get_all_screeners(user_id, include_public)
         
         return jsonify({
             'success': True,
@@ -200,12 +275,25 @@ def save_screener():
         if not tags:
             tags = ''  # Empty string for no tags
         
-        # Save screener
+        # Get user info for authentication
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({
+                'success': False,
+                'message': 'Authentication required to save screeners'
+            }), 401
+        
+        # Get public/private setting
+        is_public = data.get('is_public', False)
+        
+        # Save screener with user info
         screener_id = mongodb_manager.save_screener(
             name=data['name'],
             owner=data['owner'],
             tags=data['tags'],
-            params=data['params']
+            params=data['params'],
+            user_id=user_info['user_id'],
+            is_public=is_public
         )
         
         return jsonify({
