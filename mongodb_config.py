@@ -18,14 +18,13 @@ class MongoDBManager:
                 # For MongoDB Atlas, use specific SSL settings
                 self.client = MongoClient(
                     MONGODB_URL,
-                    ssl=True,
-                    ssl_cert_reqs='CERT_NONE',  # Disable certificate verification for Render
                     serverSelectionTimeoutMS=5000,
                     connectTimeoutMS=10000,
                     socketTimeoutMS=10000,
                     maxPoolSize=1,
                     retryWrites=True,
-                    retryReads=True
+                    retryReads=True,
+                    tlsAllowInvalidCertificates=True  # Disable certificate verification for Render
                 )
             else:
                 # For local MongoDB
