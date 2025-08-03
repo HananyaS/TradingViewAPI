@@ -20,6 +20,10 @@ def index():
 def favicon():
     return send_file('favicon.ico', mimetype='image/x-icon')
 
+@app.route('/trv_api_logo.svg')
+def logo():
+    return send_file('trv_api_logo.svg', mimetype='image/svg+xml')
+
 @app.route('/api/query', methods=['POST'])
 def api_query():
     try:
