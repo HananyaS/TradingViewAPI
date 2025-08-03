@@ -4,11 +4,22 @@ from datetime import datetime
 from bson import ObjectId
 
 # MongoDB configuration
-MONGODB_URL = os.getenv('MONGODB_URL')
-MONGODB_DB = os.getenv('MONGODB_DB')
+MONGODB_URL = os.getenv('MONGODB_URL', 'mongodb://localhost:27017/')
+MONGODB_DB = os.getenv('MONGODB_DB', 'tradingview_screener')
+USE_FALLBACK_ONLY = os.getenv('USE_FALLBACK_ONLY', 'false').lower() == 'true'
 
 class MongoDBManager:
     def __init__(self):
+        # Check if we should use fallback only
+        if USE_FALLBACK_ONLY:
+            print("Using fallback storage only (USE_FALLBACK_ONLY=true)")
+            self.client = None
+            self.db = None
+            self.screeners_collection = None
+            self._fallback_storage = []
+            self._fallback_counter = 0
+            return
+            
         try:
             # For MongoDB Atlas, the URL should include username, password, and cluster info
             # Format: mongodb+srv://username:password@cluster.mongodb.net/database
@@ -16,51 +27,45 @@ class MongoDBManager:
             # Configure MongoDB client with SSL settings for Render deployment
             if MONGODB_URL.startswith('mongodb+srv://'):
                 # For MongoDB Atlas, try multiple connection approaches
+                connection_successful = False
+                
+                # Attempt 1: Minimal settings
                 try:
-                    # First attempt: Standard connection
+                    print("Attempting MongoDB connection with minimal settings...")
                     self.client = MongoClient(
                         MONGODB_URL,
-                        serverSelectionTimeoutMS=5000,
-                        connectTimeoutMS=10000,
-                        socketTimeoutMS=10000,
-                        maxPoolSize=1,
-                        retryWrites=True,
-                        retryReads=True
+                        serverSelectionTimeoutMS=3000,
+                        connectTimeoutMS=5000,
+                        socketTimeoutMS=5000
                     )
-                    # Test connection
                     self.client.admin.command('ping')
+                    connection_successful = True
+                    print("MongoDB connection successful with minimal settings!")
                 except Exception as e:
-                    print(f"Standard connection failed: {e}")
+                    print(f"Minimal settings failed: {str(e)[:200]}...")
+                
+                # Attempt 2: With TLS settings if first attempt failed
+                if not connection_successful:
                     try:
-                        # Second attempt: With TLS settings
+                        print("Attempting MongoDB connection with TLS settings...")
                         self.client = MongoClient(
                             MONGODB_URL,
-                            serverSelectionTimeoutMS=5000,
-                            connectTimeoutMS=10000,
-                            socketTimeoutMS=10000,
-                            maxPoolSize=1,
-                            retryWrites=True,
-                            retryReads=True,
+                            serverSelectionTimeoutMS=3000,
+                            connectTimeoutMS=5000,
+                            socketTimeoutMS=5000,
                             tlsAllowInvalidCertificates=True,
                             tlsAllowInvalidHostnames=True
                         )
-                        # Test connection
                         self.client.admin.command('ping')
-                    except Exception as e2:
-                        print(f"TLS connection failed: {e2}")
-                        # Third attempt: Convert to standard connection string
-                        standard_url = MONGODB_URL.replace('mongodb+srv://', 'mongodb://')
-                        self.client = MongoClient(
-                            standard_url,
-                            serverSelectionTimeoutMS=5000,
-                            connectTimeoutMS=10000,
-                            socketTimeoutMS=10000,
-                            maxPoolSize=1,
-                            retryWrites=True,
-                            retryReads=True
-                        )
-                        # Test connection
-                        self.client.admin.command('ping')
+                        connection_successful = True
+                        print("MongoDB connection successful with TLS settings!")
+                    except Exception as e:
+                        print(f"TLS settings failed: {str(e)[:200]}...")
+                
+                # If all attempts failed, raise the last exception
+                if not connection_successful:
+                    raise Exception("All MongoDB connection attempts failed")
+                    
             else:
                 # For local MongoDB
                 self.client = MongoClient(MONGODB_URL)
