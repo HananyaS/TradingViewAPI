@@ -16,6 +16,10 @@ CORS(app)
 def index():
     return render_template('index.html')
 
+@app.route('/favicon.ico')
+def favicon():
+    return send_file('favicon.ico', mimetype='image/x-icon')
+
 @app.route('/api/query', methods=['POST'])
 def api_query():
     try:
