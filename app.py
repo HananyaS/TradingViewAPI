@@ -7,6 +7,7 @@ import math
 import urllib.parse
 from run_query import query_by_params
 from mongodb_config import mongodb_manager
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -272,4 +273,12 @@ def delete_screener(screener_id):
         }), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Debug MongoDB connection
+    print("=== MongoDB Connection Debug ===")
+    print(f"MONGODB_URL: {os.getenv('MONGODB_URL', 'Not set')[:50]}...")
+    print(f"MONGODB_DB: {os.getenv('MONGODB_DB', 'Not set')}")
+    print(f"USE_FALLBACK_ONLY: {os.getenv('USE_FALLBACK_ONLY', 'false')}")
+    print(f"USE_FILE_STORAGE: {os.getenv('USE_FILE_STORAGE', 'false')}")
+    print("================================")
+    
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
