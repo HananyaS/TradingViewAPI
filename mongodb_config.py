@@ -3,13 +3,24 @@ from pymongo import MongoClient
 from datetime import datetime
 from bson import ObjectId
 
-# MongoDB configuration
+# Storage configuration
 MONGODB_URL = os.getenv('MONGODB_URL', 'mongodb://localhost:27017/')
 MONGODB_DB = os.getenv('MONGODB_DB', 'tradingview_screener')
 USE_FALLBACK_ONLY = os.getenv('USE_FALLBACK_ONLY', 'false').lower() == 'true'
+USE_FILE_STORAGE = os.getenv('USE_FILE_STORAGE', 'false').lower() == 'true'
 
 class MongoDBManager:
     def __init__(self):
+        # Check if we should use file storage
+        if USE_FILE_STORAGE:
+            print("Using file storage (USE_FILE_STORAGE=true)")
+            from file_storage import FileStorageManager
+            self.file_storage = FileStorageManager()
+            self.client = None
+            self.db = None
+            self.screeners_collection = None
+            return
+            
         # Check if we should use fallback only
         if USE_FALLBACK_ONLY:
             print("Using fallback storage only (USE_FALLBACK_ONLY=true)")
@@ -103,6 +114,10 @@ class MongoDBManager:
     
     def save_screener(self, name, owner, tags, params):
         """Save a screener configuration"""
+        # Check if using file storage
+        if hasattr(self, 'file_storage'):
+            return self.file_storage.save_screener(name, owner, tags, params)
+            
         screener_data = {
             'name': name,
             'owner': owner,
@@ -125,6 +140,10 @@ class MongoDBManager:
     
     def get_all_screeners(self):
         """Get all saved screeners"""
+        # Check if using file storage
+        if hasattr(self, 'file_storage'):
+            return self.file_storage.get_all_screeners()
+            
         if self.screeners_collection is not None:
             # Use MongoDB
             screeners = list(self.screeners_collection.find().sort('created_at', -1))
@@ -145,6 +164,10 @@ class MongoDBManager:
     
     def get_screener_by_id(self, screener_id):
         """Get a specific screener by ID"""
+        # Check if using file storage
+        if hasattr(self, 'file_storage'):
+            return self.file_storage.get_screener_by_id(screener_id)
+            
         if self.screeners_collection is not None:
             # Use MongoDB
             try:
@@ -165,6 +188,10 @@ class MongoDBManager:
     
     def delete_screener(self, screener_id):
         """Delete a screener by ID"""
+        # Check if using file storage
+        if hasattr(self, 'file_storage'):
+            return self.file_storage.delete_screener(screener_id)
+            
         if self.screeners_collection is not None:
             # Use MongoDB
             try:
@@ -182,6 +209,10 @@ class MongoDBManager:
     
     def search_screeners(self, search_term):
         """Search screeners by name, owner, or tags"""
+        # Check if using file storage
+        if hasattr(self, 'file_storage'):
+            return self.file_storage.search_screeners(search_term)
+            
         if self.screeners_collection is not None:
             # Use MongoDB
             query = {
