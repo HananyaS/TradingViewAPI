@@ -54,21 +54,17 @@ class MongoDBManager:
                     ssl_context.options |= ssl.OP_NO_SSLv3
                     ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
                     
-                    # Connection with OpenSSL optimizations
+                    # Connection with OpenSSL optimizations (modern TLS parameters only)
                     self.client = MongoClient(
                         MONGODB_URL,
                         serverSelectionTimeoutMS=20000,
                         connectTimeoutMS=20000,
                         socketTimeoutMS=20000,
-                        # OpenSSL-optimized TLS settings
+                        # Modern TLS settings only
                         tls=True,
                         tlsCAFile=certifi.where(),
                         tlsAllowInvalidCertificates=False,
-                        tlsAllowInvalidHostnames=False,
-                        # Additional OpenSSL settings
-                        ssl_cert_reqs=ssl.CERT_REQUIRED,
-                        ssl_ca_certs=certifi.where(),
-                        ssl_match_hostname=True
+                        tlsAllowInvalidHostnames=False
                     )
                     self.client.admin.command('ping')
                     connection_successful = True
@@ -88,20 +84,16 @@ class MongoDBManager:
                         # Relaxed OpenSSL settings
                         ssl_context.set_ciphers('DEFAULT')
                         
-                        # Connection with relaxed OpenSSL settings
+                        # Connection with relaxed OpenSSL settings (modern TLS parameters only)
                         self.client = MongoClient(
                             MONGODB_URL,
                             serverSelectionTimeoutMS=20000,
                             connectTimeoutMS=20000,
                             socketTimeoutMS=20000,
-                            # Relaxed TLS settings
+                            # Relaxed TLS settings only
                             tls=True,
                             tlsAllowInvalidCertificates=True,
-                            tlsAllowInvalidHostnames=True,
-                            # Relaxed OpenSSL settings
-                            ssl_cert_reqs=ssl.CERT_NONE,
-                            ssl_ca_certs=None,
-                            ssl_match_hostname=False
+                            tlsAllowInvalidHostnames=True
                         )
                         self.client.admin.command('ping')
                         connection_successful = True
