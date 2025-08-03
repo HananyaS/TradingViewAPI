@@ -570,6 +570,11 @@
                 }
             } catch (error) {
                 console.error('Error checking auth:', error);
+                // On error, hide user info and show login button
+                document.getElementById('userInfo').style.display = 'none';
+                document.getElementById('loginBtn').style.display = 'inline-block';
+                document.getElementById('savedScreenersBtn').style.display = 'none';
+                currentUser = null;
             }
         }
         
@@ -581,8 +586,20 @@
             window.location.href = '/logout';
         }
         
-        // Check authentication on page load
-        checkAuth();
+        // Initialize authentication state
+        function initializeAuth() {
+            // Ensure logout button is hidden by default
+            document.getElementById('userInfo').style.display = 'none';
+            document.getElementById('loginBtn').style.display = 'inline-block';
+            document.getElementById('savedScreenersBtn').style.display = 'none';
+            currentUser = null;
+            
+            // Then check actual auth status
+            checkAuth();
+        }
+        
+        // Initialize authentication on page load
+        initializeAuth();
         
         // Check for error parameters in URL
         const urlParams = new URLSearchParams(window.location.search);
