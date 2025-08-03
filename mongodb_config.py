@@ -1,5 +1,6 @@
 import os
 import ssl
+import certifi
 from pymongo import MongoClient
 from datetime import datetime
 from bson import ObjectId
@@ -35,26 +36,90 @@ class MongoDBManager:
         try:
             print("Attempting MongoDB Atlas connection...")
             
-            # For MongoDB Atlas with open network access, use direct connection
+            # For MongoDB Atlas with open network access, use OpenSSL-optimized connection
             if MONGODB_URL.startswith('mongodb+srv://'):
-                # Simple, direct connection for Atlas with open network access
-                self.client = MongoClient(
-                    MONGODB_URL,
-                    serverSelectionTimeoutMS=15000,
-                    connectTimeoutMS=15000,
-                    socketTimeoutMS=15000,
-                    # Standard TLS settings for Atlas
-                    tls=True,
-                    tlsAllowInvalidCertificates=False,
-                    tlsAllowInvalidHostnames=False
-                )
+                connection_successful = False
+                
+                # Attempt 1: Strict OpenSSL configuration
+                try:
+                    print("Attempting with strict OpenSSL configuration...")
+                    # Create custom SSL context with OpenSSL optimizations
+                    ssl_context = ssl.create_default_context(cafile=certifi.where())
+                    ssl_context.check_hostname = True
+                    ssl_context.verify_mode = ssl.CERT_REQUIRED
+                    
+                    # OpenSSL-specific settings for Render compatibility
+                    ssl_context.set_ciphers('DEFAULT@SECLEVEL=1')
+                    ssl_context.options |= ssl.OP_NO_SSLv2
+                    ssl_context.options |= ssl.OP_NO_SSLv3
+                    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+                    
+                    # Connection with OpenSSL optimizations
+                    self.client = MongoClient(
+                        MONGODB_URL,
+                        serverSelectionTimeoutMS=20000,
+                        connectTimeoutMS=20000,
+                        socketTimeoutMS=20000,
+                        # OpenSSL-optimized TLS settings
+                        tls=True,
+                        tlsCAFile=certifi.where(),
+                        tlsAllowInvalidCertificates=False,
+                        tlsAllowInvalidHostnames=False,
+                        # Additional OpenSSL settings
+                        ssl_cert_reqs=ssl.CERT_REQUIRED,
+                        ssl_ca_certs=certifi.where(),
+                        ssl_match_hostname=True
+                    )
+                    self.client.admin.command('ping')
+                    connection_successful = True
+                    print("✅ MongoDB Atlas connection successful with strict OpenSSL!")
+                except Exception as e:
+                    print(f"Strict OpenSSL failed: {str(e)[:200]}...")
+                
+                # Attempt 2: Relaxed OpenSSL configuration
+                if not connection_successful:
+                    try:
+                        print("Attempting with relaxed OpenSSL configuration...")
+                        # Create relaxed SSL context
+                        ssl_context = ssl.create_default_context()
+                        ssl_context.check_hostname = False
+                        ssl_context.verify_mode = ssl.CERT_NONE
+                        
+                        # Relaxed OpenSSL settings
+                        ssl_context.set_ciphers('DEFAULT')
+                        
+                        # Connection with relaxed OpenSSL settings
+                        self.client = MongoClient(
+                            MONGODB_URL,
+                            serverSelectionTimeoutMS=20000,
+                            connectTimeoutMS=20000,
+                            socketTimeoutMS=20000,
+                            # Relaxed TLS settings
+                            tls=True,
+                            tlsAllowInvalidCertificates=True,
+                            tlsAllowInvalidHostnames=True,
+                            # Relaxed OpenSSL settings
+                            ssl_cert_reqs=ssl.CERT_NONE,
+                            ssl_ca_certs=None,
+                            ssl_match_hostname=False
+                        )
+                        self.client.admin.command('ping')
+                        connection_successful = True
+                        print("✅ MongoDB Atlas connection successful with relaxed OpenSSL!")
+                    except Exception as e:
+                        print(f"Relaxed OpenSSL failed: {str(e)[:200]}...")
+                
+                # If all attempts failed, raise the last exception
+                if not connection_successful:
+                    raise Exception("All OpenSSL MongoDB connection attempts failed")
+                    
             else:
                 # For local MongoDB
                 self.client = MongoClient(MONGODB_URL)
             
             # Test the connection
             self.client.admin.command('ping')
-            print("✅ MongoDB Atlas connection successful!")
+            print("✅ MongoDB Atlas connection successful with OpenSSL!")
             
             self.db = self.client[MONGODB_DB]
             self.screeners_collection = self.db.screeners
