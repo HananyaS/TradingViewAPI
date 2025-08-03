@@ -15,17 +15,52 @@ class MongoDBManager:
             
             # Configure MongoDB client with SSL settings for Render deployment
             if MONGODB_URL.startswith('mongodb+srv://'):
-                # For MongoDB Atlas, use specific SSL settings
-                self.client = MongoClient(
-                    MONGODB_URL,
-                    serverSelectionTimeoutMS=5000,
-                    connectTimeoutMS=10000,
-                    socketTimeoutMS=10000,
-                    maxPoolSize=1,
-                    retryWrites=True,
-                    retryReads=True,
-                    tlsAllowInvalidCertificates=True  # Disable certificate verification for Render
-                )
+                # For MongoDB Atlas, try multiple connection approaches
+                try:
+                    # First attempt: Standard connection
+                    self.client = MongoClient(
+                        MONGODB_URL,
+                        serverSelectionTimeoutMS=5000,
+                        connectTimeoutMS=10000,
+                        socketTimeoutMS=10000,
+                        maxPoolSize=1,
+                        retryWrites=True,
+                        retryReads=True
+                    )
+                    # Test connection
+                    self.client.admin.command('ping')
+                except Exception as e:
+                    print(f"Standard connection failed: {e}")
+                    try:
+                        # Second attempt: With TLS settings
+                        self.client = MongoClient(
+                            MONGODB_URL,
+                            serverSelectionTimeoutMS=5000,
+                            connectTimeoutMS=10000,
+                            socketTimeoutMS=10000,
+                            maxPoolSize=1,
+                            retryWrites=True,
+                            retryReads=True,
+                            tlsAllowInvalidCertificates=True,
+                            tlsAllowInvalidHostnames=True
+                        )
+                        # Test connection
+                        self.client.admin.command('ping')
+                    except Exception as e2:
+                        print(f"TLS connection failed: {e2}")
+                        # Third attempt: Convert to standard connection string
+                        standard_url = MONGODB_URL.replace('mongodb+srv://', 'mongodb://')
+                        self.client = MongoClient(
+                            standard_url,
+                            serverSelectionTimeoutMS=5000,
+                            connectTimeoutMS=10000,
+                            socketTimeoutMS=10000,
+                            maxPoolSize=1,
+                            retryWrites=True,
+                            retryReads=True
+                        )
+                        # Test connection
+                        self.client.admin.command('ping')
             else:
                 # For local MongoDB
                 self.client = MongoClient(MONGODB_URL)
