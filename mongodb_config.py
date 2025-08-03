@@ -10,6 +10,8 @@ MONGODB_URL = os.getenv('MONGODB_URL', 'mongodb://localhost:27017/')
 MONGODB_DB = os.getenv('MONGODB_DB', 'tradingview_screener')
 USE_FALLBACK_ONLY = os.getenv('USE_FALLBACK_ONLY', 'false').lower() == 'true'
 USE_FILE_STORAGE = os.getenv('USE_FILE_STORAGE', 'false').lower() == 'true'
+# Custom CA file path
+CUSTOM_CA_FILE = os.getenv('CUSTOM_CA_FILE', None)
 
 class MongoDBManager:
     def __init__(self):
@@ -40,11 +42,15 @@ class MongoDBManager:
             if MONGODB_URL.startswith('mongodb+srv://'):
                 connection_successful = False
                 
+                # Determine which CA file to use
+                ca_file = CUSTOM_CA_FILE if CUSTOM_CA_FILE and os.path.exists(CUSTOM_CA_FILE) else certifi.where()
+                print(f"Using CA file: {ca_file}")
+                
                 # Attempt 1: Strict OpenSSL configuration
                 try:
                     print("Attempting with strict OpenSSL configuration...")
                     # Create custom SSL context with OpenSSL optimizations
-                    ssl_context = ssl.create_default_context(cafile=certifi.where())
+                    ssl_context = ssl.create_default_context(cafile=ca_file)
                     ssl_context.check_hostname = True
                     ssl_context.verify_mode = ssl.CERT_REQUIRED
                     
@@ -60,15 +66,15 @@ class MongoDBManager:
                         serverSelectionTimeoutMS=20000,
                         connectTimeoutMS=20000,
                         socketTimeoutMS=20000,
-                        # Modern TLS settings only
+                        # Modern TLS settings with custom CA file
                         tls=True,
-                        tlsCAFile=certifi.where(),
+                        tlsCAFile=ca_file,
                         tlsAllowInvalidCertificates=False,
                         tlsAllowInvalidHostnames=False
                     )
                     self.client.admin.command('ping')
                     connection_successful = True
-                    print("✅ MongoDB Atlas connection successful with strict OpenSSL!")
+                    print("✅ MongoDB Atlas connection successful with custom CA file!")
                 except Exception as e:
                     print(f"Strict OpenSSL failed: {str(e)[:200]}...")
                 
