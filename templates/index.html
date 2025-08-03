@@ -245,6 +245,15 @@
                 width: 100%;
             }
             
+            /* Ensure logout button is hidden when not authenticated */
+            .header #userInfo[style*="display: none"] {
+                display: none !important;
+            }
+            
+            .header #userInfo[style*="display: none"] .btn {
+                display: none !important;
+            }
+            
             .form-container {
                 padding: 1.5rem;
             }
@@ -556,24 +565,63 @@
                 
                 if (user.authenticated === false) {
                     // User not authenticated
-                    document.getElementById('userInfo').style.display = 'none';
-                    document.getElementById('loginBtn').style.display = 'inline-block';
-                    document.getElementById('savedScreenersBtn').style.display = 'none';
+                    const userInfo = document.getElementById('userInfo');
+                    const loginBtn = document.getElementById('loginBtn');
+                    const savedScreenersBtn = document.getElementById('savedScreenersBtn');
+                    
+                    // Force hide user info and logout button
+                    userInfo.style.display = 'none';
+                    userInfo.style.visibility = 'hidden';
+                    
+                    // Show login button
+                    loginBtn.style.display = 'inline-block';
+                    loginBtn.style.visibility = 'visible';
+                    
+                    // Hide saved screeners button
+                    savedScreenersBtn.style.display = 'none';
+                    savedScreenersBtn.style.visibility = 'hidden';
+                    
                     currentUser = null;
                 } else {
                     // User authenticated
-                    document.getElementById('userInfo').style.display = 'flex';
+                    const userInfo = document.getElementById('userInfo');
+                    const loginBtn = document.getElementById('loginBtn');
+                    const savedScreenersBtn = document.getElementById('savedScreenersBtn');
+                    
+                    // Show user info and logout button
+                    userInfo.style.display = 'flex';
+                    userInfo.style.visibility = 'visible';
                     document.getElementById('userName').textContent = user.name || user.email;
-                    document.getElementById('loginBtn').style.display = 'none';
-                    document.getElementById('savedScreenersBtn').style.display = 'inline-block';
+                    
+                    // Hide login button
+                    loginBtn.style.display = 'none';
+                    loginBtn.style.visibility = 'hidden';
+                    
+                    // Show saved screeners button
+                    savedScreenersBtn.style.display = 'inline-block';
+                    savedScreenersBtn.style.visibility = 'visible';
+                    
                     currentUser = user;
                 }
             } catch (error) {
                 console.error('Error checking auth:', error);
                 // On error, hide user info and show login button
-                document.getElementById('userInfo').style.display = 'none';
-                document.getElementById('loginBtn').style.display = 'inline-block';
-                document.getElementById('savedScreenersBtn').style.display = 'none';
+                const userInfo = document.getElementById('userInfo');
+                const loginBtn = document.getElementById('loginBtn');
+                const savedScreenersBtn = document.getElementById('savedScreenersBtn');
+                
+                // Force hide user info and logout button
+                userInfo.style.display = 'none';
+                userInfo.style.visibility = 'hidden';
+                
+                // Show login button
+                loginBtn.style.display = 'inline-block';
+                loginBtn.style.visibility = 'visible';
+                
+                // Hide saved screeners button
+                savedScreenersBtn.style.display = 'none';
+                savedScreenersBtn.style.visibility = 'hidden';
+                
                 currentUser = null;
             }
         }
@@ -589,9 +637,22 @@
         // Initialize authentication state
         function initializeAuth() {
             // Ensure logout button is hidden by default
-            document.getElementById('userInfo').style.display = 'none';
-            document.getElementById('loginBtn').style.display = 'inline-block';
-            document.getElementById('savedScreenersBtn').style.display = 'none';
+            const userInfo = document.getElementById('userInfo');
+            const loginBtn = document.getElementById('loginBtn');
+            const savedScreenersBtn = document.getElementById('savedScreenersBtn');
+            
+            // Force hide user info and logout button
+            userInfo.style.display = 'none';
+            userInfo.style.visibility = 'hidden';
+            
+            // Show login button
+            loginBtn.style.display = 'inline-block';
+            loginBtn.style.visibility = 'visible';
+            
+            // Hide saved screeners button
+            savedScreenersBtn.style.display = 'none';
+            savedScreenersBtn.style.visibility = 'hidden';
+            
             currentUser = null;
             
             // Then check actual auth status
