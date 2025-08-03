@@ -1,27 +1,11 @@
-# Core Flask application
-Flask==2.3.3
+Flask==2.2.5
 Flask-CORS==4.0.0
-
-# TradingView API
 tradingview-screener==1.0.0
-
-# Data processing
-pandas==2.1.4
-
-# Database
-pymongo==4.6.1
-
-# Google OAuth
-google-auth==2.23.4
-google-auth-oauthlib==1.1.0
-google-auth-httplib2==0.1.1
+pandas==1.5.3
+pymongo==4.5.0
+google-auth==2.22.0
+google-auth-oauthlib==1.0.0
 requests==2.31.0
-
-# SSL/TLS for MongoDB Atlas
-certifi==2023.11.17
-urllib3==2.1.0
-dnspython==2.4.2
-pyOpenSSL==23.3.0
-
-# Environment variables (for local development)
+certifi==2023.7.22
+urllib3==2.0.7
 python-dotenv==1.0.0 
