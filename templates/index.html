@@ -114,6 +114,7 @@
             display: flex;
             gap: 1rem;
             align-items: center;
+            flex-wrap: wrap;
         }
         
         .toggle-btn {
@@ -123,6 +124,9 @@
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s ease;
+            flex: 1;
+            min-width: 80px;
+            text-align: center;
         }
         
         .toggle-btn.active {
@@ -197,6 +201,67 @@
             border-color: #667eea;
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
             transform: translateY(-2px);
+        }
+        
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .main-container {
+                margin: 1rem;
+                border-radius: 15px;
+            }
+            
+            .header {
+                padding: 1.5rem;
+                border-radius: 15px 15px 0 0;
+            }
+            
+            .form-container {
+                padding: 1.5rem;
+            }
+            
+            .toggle-group {
+                gap: 0.5rem;
+            }
+            
+            .toggle-btn {
+                padding: 10px 12px;
+                font-size: 14px;
+                min-width: 70px;
+            }
+            
+            .btn {
+                padding: 12px 20px;
+                font-size: 14px;
+            }
+            
+            .d-grid.gap-2.d-md-flex.justify-content-md-end {
+                flex-direction: column;
+                gap: 0.5rem !important;
+            }
+            
+            .d-grid.gap-2.d-md-flex.justify-content-md-end .btn {
+                width: 100%;
+                margin-bottom: 0.5rem;
+            }
+            
+            .d-flex.gap-2.justify-content-center {
+                flex-direction: column;
+                gap: 0.5rem !important;
+            }
+            
+            .d-flex.gap-2.justify-content-center .btn {
+                width: 100%;
+                margin-bottom: 0.5rem;
+            }
+            
+            .table-responsive {
+                font-size: 12px;
+            }
+            
+            .table-responsive th,
+            .table-responsive td {
+                padding: 0.5rem 0.25rem;
+            }
         }
         
         #savedScreenersList .card-title {
