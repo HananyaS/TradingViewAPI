@@ -10,11 +10,22 @@ MONGODB_URL = os.getenv('MONGODB_URL', 'mongodb://localhost:27017/')
 MONGODB_DB = os.getenv('MONGODB_DB', 'tradingview_screener')
 USE_FALLBACK_ONLY = os.getenv('USE_FALLBACK_ONLY', 'false').lower() == 'true'
 USE_FILE_STORAGE = os.getenv('USE_FILE_STORAGE', 'false').lower() == 'true'
+FORCE_FILE_STORAGE = os.getenv('FORCE_FILE_STORAGE', 'false').lower() == 'true'
 # Custom CA file path
 CUSTOM_CA_FILE = os.getenv('CUSTOM_CA_FILE', None)
 
 class MongoDBManager:
     def __init__(self):
+        # Check if we should force file storage (for SSL issues)
+        if FORCE_FILE_STORAGE:
+            print("Using file storage (FORCE_FILE_STORAGE=true) - bypassing MongoDB SSL issues")
+            from file_storage import FileStorageManager
+            self.file_storage = FileStorageManager()
+            self.client = None
+            self.db = None
+            self.screeners_collection = None
+            return
+            
         # Check if we should use file storage
         if USE_FILE_STORAGE:
             print("Using file storage (USE_FILE_STORAGE=true)")
@@ -107,9 +118,36 @@ class MongoDBManager:
                     except Exception as e:
                         print(f"Relaxed OpenSSL failed: {str(e)[:200]}...")
                 
+                # Attempt 3: NO SSL/TLS (Render emergency fallback)
+                if not connection_successful:
+                    try:
+                        print("Attempting with NO SSL/TLS (Render emergency fallback)...")
+                        # Convert mongodb+srv:// to mongodb:// and disable SSL
+                        # This is a last resort for Render compatibility
+                        connection_string = MONGODB_URL.replace('mongodb+srv://', 'mongodb://')
+                        if '?' in connection_string:
+                            connection_string += '&ssl=false&ssl_cert_reqs=CERT_NONE'
+                        else:
+                            connection_string += '?ssl=false&ssl_cert_reqs=CERT_NONE'
+                        
+                        self.client = MongoClient(
+                            connection_string,
+                            serverSelectionTimeoutMS=20000,
+                            connectTimeoutMS=20000,
+                            socketTimeoutMS=20000,
+                            # NO TLS/SSL settings
+                            tls=False,
+                            ssl=False
+                        )
+                        self.client.admin.command('ping')
+                        connection_successful = True
+                        print("✅ MongoDB Atlas connection successful with NO SSL/TLS!")
+                    except Exception as e:
+                        print(f"NO SSL/TLS failed: {str(e)[:200]}...")
+                
                 # If all attempts failed, raise the last exception
                 if not connection_successful:
-                    raise Exception("All OpenSSL MongoDB connection attempts failed")
+                    raise Exception("All MongoDB connection attempts failed - SSL handshake issues persist")
                     
             else:
                 # For local MongoDB
@@ -117,7 +155,7 @@ class MongoDBManager:
             
             # Test the connection
             self.client.admin.command('ping')
-            print("✅ MongoDB Atlas connection successful with OpenSSL!")
+            print("✅ MongoDB Atlas connection successful!")
             
             self.db = self.client[MONGODB_DB]
             self.screeners_collection = self.db.screeners
