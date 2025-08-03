@@ -1,28 +1,27 @@
-# Core dependencies
-python-telegram-bot>=20.0
-tradingview-screener>=1.0.0
-pandas>=1.5.0
-flask>=2.3.0
-flask-cors>=4.0.0
-pymongo>=4.0.0
+# Core Flask application
+Flask==2.3.3
+Flask-CORS==4.0.0
 
-# Google OAuth dependencies
-google-auth>=2.23.0
-google-auth-oauthlib>=1.0.0
-google-auth-httplib2>=0.1.0
-requests>=2.31.0
+# TradingView API
+tradingview-screener==1.0.0
 
-# Local development
-python-dotenv>=1.0.0
+# Data processing
+pandas==2.1.4
 
-# SSL/TLS dependencies for MongoDB Atlas
-certifi>=2023.7.22
-urllib3>=2.0.0
-dnspython>=2.3.0
-pyOpenSSL>=23.0.0
+# Database
+pymongo==4.6.1
 
-# Standard library imports (no need to install)
-# typing - built-in
-# dataclasses - built-in
-# datetime - built-in
-# io - built-in 
+# Google OAuth
+google-auth==2.23.4
+google-auth-oauthlib==1.1.0
+google-auth-httplib2==0.1.1
+requests==2.31.0
+
+# SSL/TLS for MongoDB Atlas
+certifi==2023.11.17
+urllib3==2.1.0
+dnspython==2.4.2
+pyOpenSSL==23.3.0
+
+# Environment variables (for local development)
+python-dotenv==1.0.0 
