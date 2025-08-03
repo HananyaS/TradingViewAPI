@@ -12,7 +12,24 @@ class MongoDBManager:
         try:
             # For MongoDB Atlas, the URL should include username, password, and cluster info
             # Format: mongodb+srv://username:password@cluster.mongodb.net/database
-            self.client = MongoClient(MONGODB_URL)
+            
+            # Configure MongoDB client with SSL settings for Render deployment
+            if MONGODB_URL.startswith('mongodb+srv://'):
+                # For MongoDB Atlas, use specific SSL settings
+                self.client = MongoClient(
+                    MONGODB_URL,
+                    ssl=True,
+                    ssl_cert_reqs='CERT_NONE',  # Disable certificate verification for Render
+                    serverSelectionTimeoutMS=5000,
+                    connectTimeoutMS=10000,
+                    socketTimeoutMS=10000,
+                    maxPoolSize=1,
+                    retryWrites=True,
+                    retryReads=True
+                )
+            else:
+                # For local MongoDB
+                self.client = MongoClient(MONGODB_URL)
             
             # Test the connection
             self.client.admin.command('ping')
@@ -28,6 +45,7 @@ class MongoDBManager:
             
         except Exception as e:
             print(f"MongoDB connection error: {e}")
+            print("Falling back to in-memory storage...")
             # Fallback to in-memory storage if MongoDB is not available
             self.client = None
             self.db = None
