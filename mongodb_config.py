@@ -33,89 +33,28 @@ class MongoDBManager:
             return
             
         try:
-            # For MongoDB Atlas, the URL should include username, password, and cluster info
-            # Format: mongodb+srv://username:password@cluster.mongodb.net/database
+            print("Attempting MongoDB Atlas connection...")
             
-            # Configure MongoDB client with SSL settings for Render deployment
+            # For MongoDB Atlas with open network access, use direct connection
             if MONGODB_URL.startswith('mongodb+srv://'):
-                # For MongoDB Atlas, try multiple connection approaches
-                connection_successful = False
-                
-                # Attempt 1: Standard Atlas connection with proper TLS
-                try:
-                    print("Attempting MongoDB Atlas connection with standard TLS...")
-                    self.client = MongoClient(
-                        MONGODB_URL,
-                        serverSelectionTimeoutMS=10000,
-                        connectTimeoutMS=10000,
-                        socketTimeoutMS=10000,
-                        # Proper TLS settings for Atlas
-                        tls=True,
-                        tlsAllowInvalidCertificates=False,
-                        tlsAllowInvalidHostnames=False
-                    )
-                    self.client.admin.command('ping')
-                    connection_successful = True
-                    print("MongoDB Atlas connection successful with standard TLS!")
-                except Exception as e:
-                    print(f"Standard TLS failed: {str(e)[:200]}...")
-                
-                # Attempt 2: With relaxed certificate validation (if needed)
-                if not connection_successful:
-                    try:
-                        print("Attempting MongoDB Atlas connection with relaxed validation...")
-                        self.client = MongoClient(
-                            MONGODB_URL,
-                            serverSelectionTimeoutMS=10000,
-                            connectTimeoutMS=10000,
-                            socketTimeoutMS=10000,
-                            # Relaxed TLS settings for problematic environments
-                            tls=True,
-                            tlsAllowInvalidCertificates=True,
-                            tlsAllowInvalidHostnames=True
-                        )
-                        self.client.admin.command('ping')
-                        connection_successful = True
-                        print("MongoDB Atlas connection successful with relaxed TLS!")
-                    except Exception as e:
-                        print(f"Relaxed TLS failed: {str(e)[:200]}...")
-                
-                # Attempt 3: With custom SSL context
-                if not connection_successful:
-                    try:
-                        print("Attempting MongoDB Atlas connection with custom SSL context...")
-                        # Create a custom SSL context
-                        ssl_context = ssl.create_default_context()
-                        ssl_context.check_hostname = False
-                        ssl_context.verify_mode = ssl.CERT_NONE
-                        
-                        self.client = MongoClient(
-                            MONGODB_URL,
-                            serverSelectionTimeoutMS=10000,
-                            connectTimeoutMS=10000,
-                            socketTimeoutMS=10000,
-                            tls=True,
-                            tlsInsecure=True,
-                            ssl_cert_reqs=ssl.CERT_NONE,
-                            ssl_ca_certs=None
-                        )
-                        self.client.admin.command('ping')
-                        connection_successful = True
-                        print("MongoDB Atlas connection successful with custom SSL context!")
-                    except Exception as e:
-                        print(f"Custom SSL context failed: {str(e)[:200]}...")
-                
-                # If all attempts failed, raise the last exception
-                if not connection_successful:
-                    raise Exception("All MongoDB Atlas connection attempts failed")
-                    
+                # Simple, direct connection for Atlas with open network access
+                self.client = MongoClient(
+                    MONGODB_URL,
+                    serverSelectionTimeoutMS=15000,
+                    connectTimeoutMS=15000,
+                    socketTimeoutMS=15000,
+                    # Standard TLS settings for Atlas
+                    tls=True,
+                    tlsAllowInvalidCertificates=False,
+                    tlsAllowInvalidHostnames=False
+                )
             else:
                 # For local MongoDB
                 self.client = MongoClient(MONGODB_URL)
             
             # Test the connection
             self.client.admin.command('ping')
-            print("MongoDB connection successful!")
+            print("✅ MongoDB Atlas connection successful!")
             
             self.db = self.client[MONGODB_DB]
             self.screeners_collection = self.db.screeners
@@ -126,7 +65,7 @@ class MongoDBManager:
             self.screeners_collection.create_index([("created_at", -1)])
             
         except Exception as e:
-            print(f"MongoDB connection error: {e}")
+            print(f"❌ MongoDB connection error: {e}")
             print("Falling back to in-memory storage...")
             # Fallback to in-memory storage if MongoDB is not available
             self.client = None
