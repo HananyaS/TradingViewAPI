@@ -1,3 +1,6 @@
+# Python version requirement
+python-version>=3.8
+
 # Core dependencies
 python-telegram-bot>=20.0
 tradingview-screener>=1.0.0
@@ -5,6 +8,12 @@ pandas>=1.5.0
 flask>=2.3.0
 flask-cors>=4.0.0
 pymongo>=4.0.0
+
+# SSL/TLS dependencies for MongoDB Atlas
+certifi>=2023.7.22
+urllib3>=2.0.0
+dnspython>=2.3.0
+pyOpenSSL>=23.0.0
 
 # Standard library imports (no need to install)
 # typing - built-in

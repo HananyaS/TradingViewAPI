@@ -1,4 +1,5 @@
 import os
+import ssl
 from pymongo import MongoClient
 from datetime import datetime
 from bson import ObjectId
@@ -78,6 +79,31 @@ class MongoDBManager:
                         print("MongoDB Atlas connection successful with relaxed TLS!")
                     except Exception as e:
                         print(f"Relaxed TLS failed: {str(e)[:200]}...")
+                
+                # Attempt 3: With custom SSL context
+                if not connection_successful:
+                    try:
+                        print("Attempting MongoDB Atlas connection with custom SSL context...")
+                        # Create a custom SSL context
+                        ssl_context = ssl.create_default_context()
+                        ssl_context.check_hostname = False
+                        ssl_context.verify_mode = ssl.CERT_NONE
+                        
+                        self.client = MongoClient(
+                            MONGODB_URL,
+                            serverSelectionTimeoutMS=10000,
+                            connectTimeoutMS=10000,
+                            socketTimeoutMS=10000,
+                            tls=True,
+                            tlsInsecure=True,
+                            ssl_cert_reqs=ssl.CERT_NONE,
+                            ssl_ca_certs=None
+                        )
+                        self.client.admin.command('ping')
+                        connection_successful = True
+                        print("MongoDB Atlas connection successful with custom SSL context!")
+                    except Exception as e:
+                        print(f"Custom SSL context failed: {str(e)[:200]}...")
                 
                 # If all attempts failed, raise the last exception
                 if not connection_successful:
