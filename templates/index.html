@@ -162,6 +162,37 @@
             color: #5a67d8;
         }
         
+        /* TradingView link styling */
+        .btn-outline-primary {
+            border-color: #007bff;
+            color: #007bff;
+            background-color: transparent;
+        }
+        
+        .btn-outline-primary:hover {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            border-radius: 0.2rem;
+        }
+        
+        /* Clickable stock symbol styling */
+        .stock-symbol-link {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .stock-symbol-link:hover {
+            color: #0056b3;
+            text-decoration: underline;
+        }
+        
         /* Table sorting styles */
         #resultsTable th {
             background-color: #f8f9fa;
@@ -389,18 +420,49 @@
                     <div class="d-flex align-items-center gap-2">
                         <div id="userInfo" style="display: none;">
                             <span class="text-white me-2" id="userName"></span>
-                            <button type="button" class="btn btn-outline-light btn-sm" onclick="logout()">
-                                <i class="fas fa-sign-out-alt"></i> Logout
-                            </button>
+                                                    <button type="button" class="btn btn-outline-light" onclick="logout()">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </button>
                         </div>
                         <button type="button" class="btn btn-outline-light" onclick="showSavedScreenersModal()" id="savedScreenersBtn">
                             <i class="fas fa-bookmark"></i> Saved Screeners
+                        </button>
+                        <button type="button" class="btn btn-outline-light" onclick="showPriceUpdater()" id="priceUpdaterBtn">
+                            <i class="fas fa-cogs"></i> Price Updater
                         </button>
                         <button type="button" class="btn btn-outline-light" onclick="login()" id="loginBtn">
                             <i class="fas fa-sign-in-alt"></i> Login
                         </button>
                     </div>
                 </div>
+                
+                <!-- Navigation Bar -->
+                <nav class="navbar navbar-expand-lg navbar-dark mt-3">
+                    <div class="container-fluid">
+                        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                            <span class="navbar-toggler-icon"></span>
+                        </button>
+                        <div class="collapse navbar-collapse" id="navbarNav">
+                            <ul class="navbar-nav mx-auto">
+                                <li class="nav-item">
+                                    <a class="nav-link active" href="/">
+                                        <i class="fas fa-search"></i> Screener
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/journal">
+                                        <i class="fas fa-book"></i> Trading Journal
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/watchlist">
+                                        <i class="fas fa-eye"></i> Watchlist
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </nav>
             </div>
             
             <div class="form-container">
@@ -493,6 +555,8 @@
                     </div>
                 </form>
                 
+
+                
                 <div class="loading" id="loading">
                     <div class="spinner-border" role="status">
                         <span class="visually-hidden">Loading...</span>
@@ -521,6 +585,7 @@
                                 <button type="button" class="btn btn-primary" onclick="downloadCSV()">
                                     <i class="fas fa-file-csv"></i> Download CSV
                                 </button>
+
                                 <button type="button" class="btn btn-success" onclick="showSaveScreenerModal()">
                                     <i class="fas fa-save"></i> Save Screener
                                 </button>
@@ -627,15 +692,33 @@
         }
         
         function login() {
+            // Clear any existing session data
+            sessionStorage.clear();
             window.location.href = '/login';
         }
         
         function logout() {
+            // Clear session data
+            sessionStorage.clear();
             window.location.href = '/logout';
         }
         
         // Initialize authentication state
         function initializeAuth() {
+            // Check if we just returned from OAuth
+            const urlParams = new URLSearchParams(window.location.search);
+            const error = urlParams.get('error');
+            
+            if (error) {
+                // Show error and clear URL parameters
+                document.getElementById('errorMessage').textContent = decodeURIComponent(error);
+                document.getElementById('errorAlert').style.display = 'block';
+                document.getElementById('successAlert').style.display = 'none';
+                
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+            
             // Ensure logout button is hidden by default
             const userInfo = document.getElementById('userInfo');
             const loginBtn = document.getElementById('loginBtn');
@@ -798,6 +881,10 @@
             }
         }
         
+
+        
+
+        
         // Reset form function
         function resetForm() {
             document.getElementById('screenerForm').reset();
@@ -898,6 +985,18 @@
                         link.textContent = val;
                         link.className = 'stock-link';
                         td.appendChild(link);
+                    } else if (col === 'symbol') {
+                        // Add TradingView link for symbol column
+                        const symbolSpan = document.createElement('span');
+                        symbolSpan.innerHTML = `
+                            <a href="https://www.tradingview.com/symbols/${val}" target="_blank" class="stock-symbol-link">
+                                <strong>${val}</strong>
+                            </a>
+                            <a href="https://www.tradingview.com/symbols/${val}" target="_blank" class="btn btn-sm btn-outline-primary ms-2" title="View on TradingView">
+                                <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        `;
+                        td.appendChild(symbolSpan);
                     } else {
                         td.textContent = val;
                     }
@@ -1067,6 +1166,124 @@
             modal.show();
         }
         
+        // Show price updater modal
+        function showPriceUpdater() {
+            const modalElement = document.getElementById('priceUpdaterModal');
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+            refreshUpdaterStats();
+        }
+        
+        // Start background price updater
+        async function startUpdater() {
+            try {
+                const response = await fetch('/api/prices/updater/start', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ Background price updater started successfully!');
+                    refreshUpdaterStats();
+                } else {
+                    alert('❌ Error starting price updater: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error starting updater:', error);
+                alert('❌ Error starting price updater');
+            }
+        }
+        
+        // Stop background price updater
+        async function stopUpdater() {
+            try {
+                const response = await fetch('/api/prices/updater/stop', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ Background price updater stopped successfully!');
+                    refreshUpdaterStats();
+                } else {
+                    alert('❌ Error stopping price updater: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error stopping updater:', error);
+                alert('❌ Error stopping price updater');
+            }
+        }
+        
+        // Refresh updater statistics
+        async function refreshUpdaterStats() {
+            try {
+                const response = await fetch('/api/prices/updater/stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const stats = data.stats;
+                    const statusElement = document.getElementById('updaterStatus');
+                    const statsElement = document.getElementById('updaterStats');
+                    
+                    // Update status
+                    if (stats.running) {
+                        statusElement.innerHTML = '<span class="badge bg-success">Running</span>';
+                    } else {
+                        statusElement.innerHTML = '<span class="badge bg-danger">Stopped</span>';
+                    }
+                    
+                    // Update stats
+                    const lastUpdate = stats.last_update_time ? new Date(stats.last_update_time).toLocaleString() : 'Never';
+                    statsElement.innerHTML = `
+                        <strong>Statistics:</strong><br>
+                        • Total Updates: ${stats.total_updates}<br>
+                        • Last Update: ${lastUpdate}<br>
+                        • Symbols Updated: ${stats.symbols_updated}<br>
+                        • Errors: ${stats.errors}<br>
+                        • Update Interval: ${stats.update_interval} seconds
+                    `;
+                } else {
+                    console.error('Error getting updater stats:', data.error);
+                }
+            } catch (error) {
+                console.error('Error refreshing updater stats:', error);
+            }
+        }
+        
+        // Set update interval
+        async function setUpdateInterval() {
+            const interval = document.getElementById('updateInterval').value;
+            const seconds = parseInt(interval);
+            
+            if (isNaN(seconds) || seconds < 10 || seconds > 300) {
+                alert('❌ Please enter a valid interval between 10 and 300 seconds');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/prices/updater/interval', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        seconds: seconds
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ Update interval set successfully!');
+                    refreshUpdaterStats();
+                } else {
+                    alert('❌ Error setting interval: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error setting interval:', error);
+                alert('❌ Error setting update interval');
+            }
+        }
+        
         // Load saved screeners
         async function loadSavedScreeners() {
             try {
@@ -1097,6 +1314,9 @@
                 const tags = screener.tags ? screener.tags.split(',').map(tag => `<span class="badge">${tag.trim()}</span>`).join('') : '';
                 const createdDate = new Date(screener.created_at).toLocaleDateString();
                 
+                // Get screener statistics
+                const screenerStats = getScreenerStats(screener._id);
+                
                 // Format parameters for display
                 const params = screener.params || {};
                 const paramEntries = Object.entries(params).filter(([key, value]) => value !== null && value !== undefined);
@@ -1122,6 +1342,30 @@
                     '<span class="badge bg-success"><i class="fas fa-globe"></i> Public</span>' : 
                     '<span class="badge bg-secondary"><i class="fas fa-lock"></i> Private</span>';
                 
+                // Statistics section
+                const statsHtml = screenerStats.totalTrades > 0 ? `
+                    <div class="screener-stats mt-3">
+                        <h6><i class="fas fa-chart-bar"></i> Trading Statistics</h6>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <small class="text-muted">
+                                    <i class="fas fa-chart-line"></i> ${screenerStats.totalTrades} trades
+                                </small>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="text-muted">
+                                    <i class="fas fa-trophy"></i> ${screenerStats.winRate}% win rate
+                                </small>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="text-muted">
+                                    <i class="fas fa-percentage"></i> ${screenerStats.avgReturn}% avg return
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                ` : '';
+                
                 html += `
                     <div class="card">
                         <div class="card-body">
@@ -1139,18 +1383,226 @@
                                     <button type="button" class="btn btn-primary" onclick="loadScreener('${screener._id}')">
                                         <i class="fas fa-play"></i> Run
                                     </button>
+                                    ${screenerStats.totalTrades > 0 ? `
+                                        <button type="button" class="btn btn-info" onclick="viewScreenerStats('${screener._id}', '${screener.name}')">
+                                            <i class="fas fa-chart-bar"></i> Stats
+                                        </button>
+                                    ` : ''}
                                     <button type="button" class="btn btn-danger" onclick="showDeleteScreenerModal('${screener._id}', '${screener.name}')">
                                         <i class="fas fa-trash"></i> Delete
                                     </button>
                                 </div>
                             </div>
                             ${paramsHtml}
+                            ${statsHtml}
                         </div>
                     </div>
                 `;
             });
             
             container.innerHTML = html;
+        }
+        
+        // Get screener statistics
+        function getScreenerStats(screenerId) {
+            const trades = JSON.parse(localStorage.getItem('trades') || '[]');
+            const screenerTrades = trades.filter(trade => trade.screenerId === screenerId);
+            
+            if (screenerTrades.length === 0) {
+                return {
+                    totalTrades: 0,
+                    winRate: 0,
+                    avgReturn: 0
+                };
+            }
+            
+            // Calculate statistics for this screener's trades
+            const completedTrades = calculateCompletedTradesForScreener(screenerTrades);
+            const winRate = completedTrades.total > 0 ? ((completedTrades.wins / completedTrades.total) * 100).toFixed(1) : 0;
+            const avgReturn = completedTrades.total > 0 ? (completedTrades.totalReturn / completedTrades.total).toFixed(2) : 0;
+            
+            return {
+                totalTrades: screenerTrades.length,
+                winRate: winRate,
+                avgReturn: avgReturn
+            };
+        }
+        
+        // Calculate completed trades for a specific screener
+        function calculateCompletedTradesForScreener(screenerTrades) {
+            const tradesBySymbol = {};
+            
+            // Group trades by symbol
+            screenerTrades.forEach(trade => {
+                if (!tradesBySymbol[trade.symbol]) {
+                    tradesBySymbol[trade.symbol] = [];
+                }
+                tradesBySymbol[trade.symbol].push(trade);
+            });
+            
+            let totalCompleted = 0;
+            let totalWins = 0;
+            let totalReturn = 0;
+            
+            // Calculate returns for each symbol
+            Object.values(tradesBySymbol).forEach(symbolTrades => {
+                // Sort by date
+                symbolTrades.sort((a, b) => new Date(a.date) - new Date(b.date));
+                
+                let position = 0;
+                let avgBuyPrice = 0;
+                let totalQuantity = 0;
+                
+                symbolTrades.forEach(trade => {
+                    if (trade.type === 'buy') {
+                        // Add to position
+                        const newQuantity = totalQuantity + trade.quantity;
+                        avgBuyPrice = ((avgBuyPrice * totalQuantity) + (trade.price * trade.quantity)) / newQuantity;
+                        totalQuantity = newQuantity;
+                        position += trade.quantity * trade.price;
+                    } else if (trade.type === 'sell' && totalQuantity > 0) {
+                        // Calculate profit/loss
+                        const sellQuantity = Math.min(trade.quantity, totalQuantity);
+                        const sellValue = sellQuantity * trade.price;
+                        const buyValue = sellQuantity * avgBuyPrice;
+                        const profit = sellValue - buyValue;
+                        const returnPercent = (profit / buyValue) * 100;
+                        
+                        totalReturn += returnPercent;
+                        totalCompleted++;
+                        
+                        if (profit > 0) {
+                            totalWins++;
+                        }
+                        
+                        // Update position
+                        totalQuantity -= sellQuantity;
+                        if (totalQuantity === 0) {
+                            avgBuyPrice = 0;
+                        }
+                    }
+                });
+            });
+            
+            return {
+                total: totalCompleted,
+                wins: totalWins,
+                totalReturn: totalReturn
+            };
+        }
+        
+        // View screener statistics
+        function viewScreenerStats(screenerId, screenerName) {
+            const trades = JSON.parse(localStorage.getItem('trades') || '[]');
+            const screenerTrades = trades.filter(trade => trade.screenerId === screenerId);
+            
+            if (screenerTrades.length === 0) {
+                alert(`No trades found for screener "${screenerName}"`);
+                return;
+            }
+            
+            const completedTrades = calculateCompletedTradesForScreener(screenerTrades);
+            const winRate = completedTrades.total > 0 ? ((completedTrades.wins / completedTrades.total) * 100).toFixed(1) : 0;
+            const avgReturn = completedTrades.total > 0 ? (completedTrades.totalReturn / completedTrades.total).toFixed(2) : 0;
+            
+            let statsHTML = `
+                <div class="modal fade" id="screenerStatsModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title"><i class="fas fa-chart-bar"></i> Screener Statistics: ${screenerName}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <div class="card text-center">
+                                            <div class="card-body">
+                                                <h3 class="text-primary">${screenerTrades.length}</h3>
+                                                <p class="card-text">Total Trades</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card text-center">
+                                            <div class="card-body">
+                                                <h3 class="text-success">${winRate}%</h3>
+                                                <p class="card-text">Win Rate</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card text-center">
+                                            <div class="card-body">
+                                                <h3 class="text-info">${avgReturn}%</h3>
+                                                <p class="card-text">Avg Return</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <h6>Trades from this Screener:</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Symbol</th>
+                                                <th>Type</th>
+                                                <th>Price</th>
+                                                <th>Quantity</th>
+                                                <th>Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+            `;
+            
+            screenerTrades.forEach(trade => {
+                const total = (trade.price * trade.quantity).toFixed(2);
+                const typeClass = trade.type === 'buy' || trade.type === 'cover' ? 'text-success' : 'text-danger';
+                const typeIcon = trade.type === 'buy' ? '📈' : trade.type === 'sell' ? '📉' : trade.type === 'short' ? '🔻' : '🔺';
+                
+                statsHTML += `
+                    <tr>
+                        <td>${trade.date}</td>
+                        <td>
+                            <a href="https://www.tradingview.com/symbols/${trade.symbol}" target="_blank" class="stock-symbol-link">
+                                <strong>${trade.symbol}</strong>
+                            </a>
+                            <a href="https://www.tradingview.com/symbols/${trade.symbol}" target="_blank" class="btn btn-sm btn-outline-primary ms-2" title="View on TradingView">
+                                <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        </td>
+                        <td><span class="${typeClass}">${typeIcon} ${trade.type.toUpperCase()}</span></td>
+                        <td>$${trade.price}</td>
+                        <td>${trade.quantity}</td>
+                        <td>$${total}</td>
+                    </tr>
+                `;
+            });
+            
+            statsHTML += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove existing modal if any
+            const existingModal = document.getElementById('screenerStatsModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // Add modal to page
+            document.body.insertAdjacentHTML('beforeend', statsHTML);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('screenerStatsModal'));
+            modal.show();
         }
         
         // Format parameter names for display
@@ -1203,12 +1655,13 @@
                     document.getElementById('resultSection').style.display = 'none';
                     
                     // Run the screener automatically
-                    await runScreenerWithParams(screener.params);
+                    const screenerResult = await runScreenerWithParams(screener.params);
                     
-                    // Show success message
+                    // Show success message with count
                     const successAlert = document.getElementById('successAlert');
                     const successMessage = document.getElementById('successMessage');
-                    successMessage.textContent = `Loaded and ran screener: ${screener.name}`;
+                    const count = screenerResult && screenerResult.count ? screenerResult.count : 0;
+                    successMessage.textContent = `Loaded and ran screener: ${screener.name} (${count} symbols found)`;
                     successAlert.style.display = 'block';
                     document.getElementById('errorAlert').style.display = 'none';
                     
@@ -1249,12 +1702,18 @@
                     // Render results table
                     renderResultsTable(result.columns, result.data);
                     document.getElementById('resultsCard').style.display = 'block';
+                    
+                    // Return the count for the calling function
+                    return { count: result.count || result.data.length };
                 } else {
                     document.getElementById('errorMessage').textContent = result.message;
                     document.getElementById('errorAlert').style.display = 'block';
                     document.getElementById('successAlert').style.display = 'none';
                     document.getElementById('downloadCard').style.display = 'none';
                     document.getElementById('resultsCard').style.display = 'none';
+                    
+                    // Return 0 count for error cases
+                    return { count: 0 };
                 }
                 
             } catch (error) {
@@ -1265,6 +1724,9 @@
                 document.getElementById('successAlert').style.display = 'none';
                 document.getElementById('downloadCard').style.display = 'none';
                 document.getElementById('resultsCard').style.display = 'none';
+                
+                // Return 0 count for error cases
+                return { count: 0 };
             }
         }
         
@@ -1460,6 +1922,61 @@
                     <button type="button" class="btn btn-danger" onclick="confirmDeleteScreener()">
                         <i class="fas fa-trash"></i> Delete
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Price Updater Management Modal -->
+    <div class="modal fade" id="priceUpdaterModal" tabindex="-1" aria-labelledby="priceUpdaterModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-cogs"></i> Background Price Updater</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Status</h6>
+                            <div id="updaterStatus" class="mb-3">
+                                <span class="badge bg-secondary">Loading...</span>
+                            </div>
+                            <div id="updaterStats" class="small text-muted">
+                                Loading statistics...
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Controls</h6>
+                            <div class="d-grid gap-2">
+                                <button type="button" class="btn btn-success btn-sm" onclick="startUpdater()">
+                                    <i class="fas fa-play"></i> Start Updater
+                                </button>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="stopUpdater()">
+                                    <i class="fas fa-stop"></i> Stop Updater
+                                </button>
+                                <button type="button" class="btn btn-info btn-sm" onclick="refreshUpdaterStats()">
+                                    <i class="fas fa-sync"></i> Refresh Stats
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <h6>Update Interval</h6>
+                            <div class="input-group">
+                                <input type="number" id="updateInterval" class="form-control" value="30" min="10" max="300">
+                                <span class="input-group-text">seconds</span>
+                                <button type="button" class="btn btn-primary btn-sm" onclick="setUpdateInterval()">
+                                    <i class="fas fa-save"></i> Set
+                                </button>
+                            </div>
+                            <small class="text-muted">Minimum 10 seconds, maximum 300 seconds</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>

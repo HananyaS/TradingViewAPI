@@ -341,5 +341,374 @@ class MongoDBManager:
             screeners.sort(key=lambda x: x['created_at'], reverse=True)
             return screeners
 
+    # Price cache methods
+    def get_price_cache(self, symbol):
+        """Get cached price for a symbol"""
+        try:
+            if self.client is None:
+                # Use fallback storage - for now return None
+                return None
+            
+            # Use MongoDB price cache collection
+            price_collection = self.db.price_cache
+            price_doc = price_collection.find_one({'symbol': symbol.upper()})
+            return price_doc
+        except Exception as e:
+            print(f"Error getting price cache for {symbol}: {e}")
+            return None
+
+    def update_price_cache(self, symbol, current_price, change, change_percent):
+        """Update cached price for a symbol"""
+        try:
+            if self.client is None:
+                # Use fallback storage - for now just log
+                print(f"Price cache update (fallback): {symbol} = ${current_price}")
+                return
+            
+            # Use MongoDB price cache collection
+            price_collection = self.db.price_cache
+            
+            # Create or update price document
+            price_doc = {
+                'symbol': symbol.upper(),
+                'current_price': current_price,
+                'change': change,
+                'change_percent': change_percent,
+                'last_update': datetime.utcnow()
+            }
+            
+            # Upsert the document
+            price_collection.update_one(
+                {'symbol': symbol.upper()},
+                {'$set': price_doc},
+                upsert=True
+            )
+            
+            print(f"✅ Updated price cache for {symbol}: ${current_price}")
+        except Exception as e:
+            print(f"Error updating price cache for {symbol}: {e}")
+
+    def get_multiple_price_cache(self, symbols):
+        """Get cached prices for multiple symbols"""
+        try:
+            if self.client is None:
+                # Use fallback storage - for now return empty dict
+                return {}
+            
+            # Use MongoDB price cache collection
+            price_collection = self.db.price_cache
+            
+            # Find all symbols in one query
+            cursor = price_collection.find({
+                'symbol': {'$in': [s.upper() for s in symbols]}
+            })
+            
+            prices = {}
+            for doc in cursor:
+                prices[doc['symbol']] = {
+                    'current': doc['current_price'],
+                    'change': doc['change'],
+                    'changePercent': doc['change_percent'],
+                    'lastUpdate': doc['last_update'].isoformat()
+                }
+            
+            return prices
+        except Exception as e:
+            print(f"Error getting multiple price cache: {e}")
+            return {}
+
+    def clear_old_price_cache(self, hours=24):
+        """Clear old price cache entries (older than specified hours)"""
+        try:
+            if self.client is None:
+                # Use fallback storage - nothing to clear
+                return
+            
+            # Use MongoDB price cache collection
+            price_collection = self.db.price_cache
+            
+            # Calculate cutoff time
+            from datetime import timedelta
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            
+            # Delete old entries
+            result = price_collection.delete_many({
+                'last_update': {'$lt': cutoff_time}
+            })
+            
+            print(f"✅ Cleared {result.deleted_count} old price cache entries")
+        except Exception as e:
+            print(f"Error clearing old price cache: {e}")
+
+    # Trades collection methods
+    def save_trade(self, user_id, trade_data):
+        """Save a trade for a user"""
+        try:
+            if self.client is None:
+                # Use fallback storage
+                if not hasattr(self, '_fallback_trades'):
+                    self._fallback_trades = []
+                
+                self._fallback_counter += 1
+                trade_doc = {
+                    '_id': str(self._fallback_counter),
+                    'user_id': user_id,
+                    **trade_data,
+                    'created_at': datetime.utcnow()
+                }
+                self._fallback_trades.append(trade_doc)
+                return str(self._fallback_counter)
+            
+            # Use MongoDB trades collection
+            trades_collection = self.db.trades
+            
+            # Create trade document
+            trade_doc = {
+                'user_id': user_id,
+                **trade_data,
+                'created_at': datetime.utcnow()
+            }
+            
+            result = trades_collection.insert_one(trade_doc)
+            return str(result.inserted_id)
+            
+        except Exception as e:
+            print(f"Error saving trade: {e}")
+            return None
+
+    def get_user_trades(self, user_id):
+        """Get all trades for a user"""
+        try:
+            if self.client is None:
+                # Use fallback storage
+                if not hasattr(self, '_fallback_trades'):
+                    self._fallback_trades = []
+                
+                user_trades = []
+                for trade in self._fallback_trades:
+                    if trade.get('user_id') == user_id:
+                        trade_copy = trade.copy()
+                        trade_copy['_id'] = str(trade_copy['_id'])
+                        trade_copy['created_at'] = trade_copy['created_at'].isoformat()
+                        user_trades.append(trade_copy)
+                
+                return user_trades
+            
+            # Use MongoDB trades collection
+            trades_collection = self.db.trades
+            
+            trades = list(trades_collection.find({'user_id': user_id}).sort('created_at', -1))
+            
+            # Convert ObjectId to string and dates to ISO format
+            for trade in trades:
+                trade['_id'] = str(trade['_id'])
+                trade['created_at'] = trade['created_at'].isoformat()
+            
+            return trades
+            
+        except Exception as e:
+            print(f"Error getting user trades: {e}")
+            return []
+
+    def delete_trade(self, user_id, trade_id):
+        """Delete a trade for a user"""
+        try:
+            if self.client is None:
+                # Use fallback storage
+                if not hasattr(self, '_fallback_trades'):
+                    self._fallback_trades = []
+                
+                for i, trade in enumerate(self._fallback_trades):
+                    if trade.get('_id') == trade_id and trade.get('user_id') == user_id:
+                        del self._fallback_trades[i]
+                        return True
+                return False
+            
+            # Use MongoDB trades collection
+            trades_collection = self.db.trades
+            
+            try:
+                result = trades_collection.delete_one({
+                    '_id': ObjectId(trade_id),
+                    'user_id': user_id
+                })
+                return result.deleted_count > 0
+            except:
+                return False
+            
+        except Exception as e:
+            print(f"Error deleting trade: {e}")
+            return False
+
+    def update_trade(self, user_id, trade_id, trade_data):
+        """Update a trade for a user"""
+        try:
+            if self.client is None:
+                # Use fallback storage
+                if not hasattr(self, '_fallback_trades'):
+                    self._fallback_trades = []
+                
+                for trade in self._fallback_trades:
+                    if trade.get('_id') == trade_id and trade.get('user_id') == user_id:
+                        trade.update(trade_data)
+                        trade['updated_at'] = datetime.utcnow()
+                        return True
+                return False
+            
+            # Use MongoDB trades collection
+            trades_collection = self.db.trades
+            
+            try:
+                trade_data['updated_at'] = datetime.utcnow()
+                result = trades_collection.update_one(
+                    {
+                        '_id': ObjectId(trade_id),
+                        'user_id': user_id
+                    },
+                    {'$set': trade_data}
+                )
+                return result.modified_count > 0
+            except:
+                return False
+            
+        except Exception as e:
+            print(f"Error updating trade: {e}")
+            return False
+
+    # Watchlist collection methods
+    def save_watchlist_item(self, user_id, item_data):
+        """Save a watchlist item for a user"""
+        try:
+            if self.client is None:
+                # Use fallback storage
+                if not hasattr(self, '_fallback_watchlist'):
+                    self._fallback_watchlist = []
+                
+                self._fallback_counter += 1
+                item_doc = {
+                    '_id': str(self._fallback_counter),
+                    'user_id': user_id,
+                    **item_data,
+                    'created_at': datetime.utcnow()
+                }
+                self._fallback_watchlist.append(item_doc)
+                return str(self._fallback_counter)
+            
+            # Use MongoDB watchlist collection
+            watchlist_collection = self.db.watchlist
+            
+            # Create watchlist item document
+            item_doc = {
+                'user_id': user_id,
+                **item_data,
+                'created_at': datetime.utcnow()
+            }
+            
+            result = watchlist_collection.insert_one(item_doc)
+            return str(result.inserted_id)
+            
+        except Exception as e:
+            print(f"Error saving watchlist item: {e}")
+            return None
+
+    def get_user_watchlist(self, user_id):
+        """Get all watchlist items for a user"""
+        try:
+            if self.client is None:
+                # Use fallback storage
+                if not hasattr(self, '_fallback_watchlist'):
+                    self._fallback_watchlist = []
+                
+                user_items = []
+                for item in self._fallback_watchlist:
+                    if item.get('user_id') == user_id:
+                        item_copy = item.copy()
+                        item_copy['_id'] = str(item_copy['_id'])
+                        item_copy['created_at'] = item_copy['created_at'].isoformat()
+                        user_items.append(item_copy)
+                
+                return user_items
+            
+            # Use MongoDB watchlist collection
+            watchlist_collection = self.db.watchlist
+            
+            items = list(watchlist_collection.find({'user_id': user_id}).sort('created_at', -1))
+            
+            # Convert ObjectId to string and dates to ISO format
+            for item in items:
+                item['_id'] = str(item['_id'])
+                item['created_at'] = item['created_at'].isoformat()
+            
+            return items
+            
+        except Exception as e:
+            print(f"Error getting user watchlist: {e}")
+            return []
+
+    def delete_watchlist_item(self, user_id, item_id):
+        """Delete a watchlist item for a user"""
+        try:
+            if self.client is None:
+                # Use fallback storage
+                if not hasattr(self, '_fallback_watchlist'):
+                    self._fallback_watchlist = []
+                
+                for i, item in enumerate(self._fallback_watchlist):
+                    if item.get('_id') == item_id and item.get('user_id') == user_id:
+                        del self._fallback_watchlist[i]
+                        return True
+                return False
+            
+            # Use MongoDB watchlist collection
+            watchlist_collection = self.db.watchlist
+            
+            try:
+                result = watchlist_collection.delete_one({
+                    '_id': ObjectId(item_id),
+                    'user_id': user_id
+                })
+                return result.deleted_count > 0
+            except:
+                return False
+            
+        except Exception as e:
+            print(f"Error deleting watchlist item: {e}")
+            return False
+
+    def update_watchlist_item(self, user_id, item_id, item_data):
+        """Update a watchlist item for a user"""
+        try:
+            if self.client is None:
+                # Use fallback storage
+                if not hasattr(self, '_fallback_watchlist'):
+                    self._fallback_watchlist = []
+                
+                for item in self._fallback_watchlist:
+                    if item.get('_id') == item_id and item.get('user_id') == user_id:
+                        item.update(item_data)
+                        item['updated_at'] = datetime.utcnow()
+                        return True
+                return False
+            
+            # Use MongoDB watchlist collection
+            watchlist_collection = self.db.watchlist
+            
+            try:
+                item_data['updated_at'] = datetime.utcnow()
+                result = watchlist_collection.update_one(
+                    {
+                        '_id': ObjectId(item_id),
+                        'user_id': user_id
+                    },
+                    {'$set': item_data}
+                )
+                return result.modified_count > 0
+            except:
+                return False
+            
+        except Exception as e:
+            print(f"Error updating watchlist item: {e}")
+            return False
+
 # Global MongoDB manager instance
 mongodb_manager = MongoDBManager() 
