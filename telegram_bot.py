@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import io
 import os
 
@@ -34,7 +34,7 @@ def create_csv_from_pd(results):
     buf = io.BytesIO()
     buf.write(s.getvalue().encode('utf-8'))
     buf.seek(0)
-    buf.name = f"screener_results_{datetime.datetime.today().strftime('%Y%m%d')}.csv"
+    buf.name = f"screener_results_{datetime.today().strftime('%Y%m%d')}.csv"
     return buf
 
 

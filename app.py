@@ -556,7 +556,7 @@ def api_query():
             'count': len(results),
             'message': f'Found {len(results)} symbols!',
             'csv_data': csv_buffer.getvalue(),
-            'filename': f"screener_results_{datetime.datetime.today().strftime('%Y%m%d')}.csv",
+            'filename': f"screener_results_{datetime.today().strftime('%Y%m%d')}.csv",
             'data': all_data,
             'columns': display_columns
         }
