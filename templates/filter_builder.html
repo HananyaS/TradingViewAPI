@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Stock Screener - Filter Builder</title>
+    
+    <!-- Bootstrap CSS for base styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Custom Filter Builder CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='FilterBuilder.css') }}">
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        
+        .main-container {
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .page-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .page-header h1 {
+            color: #2c3e50;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        .page-header p {
+            color: #6c757d;
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .feature-list {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        
+        .feature-list h3 {
+            color: #495057;
+            margin-bottom: 1rem;
+        }
+        
+        .feature-list ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .feature-list li::before {
+            content: "✅ ";
+            margin-right: 0.5rem;
+        }
+        
+        .filter-builder-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .quick-examples {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .quick-examples h4 {
+            color: #1976d2;
+            margin-bottom: 1rem;
+        }
+        
+        .example-btn {
+            margin: 0.25rem;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: #6c757d;
+            border-top: 1px solid #e9ecef;
+            margin-top: 3rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                📈 TradingView Screener
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">🏠 Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#">🔍 Filter Builder</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('journal') }}">📊 Journal</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('watchlist') }}">👀 Watchlist</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container main-container">
+        <!-- Page Header -->
+        <div class="page-header">
+            <h1>🔍 Dynamic Stock Screener</h1>
+            <p>Build complex stock filters with an intuitive drag-and-drop interface. 
+               Combine multiple conditions using AND/OR logic to find exactly the stocks you're looking for.</p>
+        </div>
+
+        <!-- Features Overview -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="feature-list">
+                    <h3>🚀 Key Features</h3>
+                    <ul>
+                        <li>Searchable field dropdowns grouped by category</li>
+                        <li>Dynamic operators based on field type</li>
+                        <li>Field-to-field and field-to-constant comparisons</li>
+                        <li>Nested logical groups (AND/OR)</li>
+                        <li>Real-time filter preview</li>
+                        <li>CSV export of results</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="feature-list">
+                    <h3>📊 Available Field Categories</h3>
+                    <ul>
+                        <li>Price data (Open, High, Low, Close, Change)</li>
+                        <li>Volume metrics (Volume, Relative Volume)</li>
+                        <li>Technical indicators (RSI, SMA, Bollinger Bands)</li>
+                        <li>Fundamental data (Market Cap, Sector, Industry)</li>
+                        <li>Candlestick patterns</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Examples -->
+        <div class="quick-examples">
+            <h4>🎯 Quick Examples</h4>
+            <p>Click to load pre-built filter examples:</p>
+            <button class="btn btn-outline-primary example-btn" onclick="loadExample('highVolume')">
+                📈 High Volume Breakouts
+            </button>
+            <button class="btn btn-outline-primary example-btn" onclick="loadExample('oversold')">
+                📉 Oversold RSI Stocks
+            </button>
+            <button class="btn btn-outline-primary example-btn" onclick="loadExample('momentum')">
+                🚀 Momentum Stocks
+            </button>
+        </div>
+
+        <!-- Filter Builder Container -->
+        <div class="filter-builder-container">
+            <div id="filterBuilderContainer">
+                <!-- FilterBuilder component will be rendered here -->
+                <div class="loading text-center p-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3">Loading filter builder...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <p>&copy; 2024 TradingView Screener API.</p>
+        <p>
+            <a href="https://shner-elmo.github.io/TradingView-Screener/fields/stocks.html" target="_blank">📚 Documentation</a>
+<!--            <a href="mailto:support@example.com">📧 Support</a>-->
+        </p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='apiClient.js') }}"></script>
+    <script src="{{ url_for('static', filename='FilterBuilder.js') }}"></script>
+
+    <script>
+        // Example filter configurations
+        const examples = {
+            highVolume: {
+                filter_groups: [{
+                    id: "group1",
+                    logical_operator: "AND",
+                    rules: [
+                        {
+                            id: "rule1",
+                            left_operand: { type: "field", value: "relative_volume", field_type: "number" },
+                            operator: "greater_than",
+                            right_operand: { type: "constant", value: 2.0 },
+                            enabled: true
+                        },
+                        {
+                            id: "rule2", 
+                            left_operand: { type: "field", value: "close", field_type: "number" },
+                            operator: "greater_than",
+                            right_operand: { type: "constant", value: 5.0 },
+                            enabled: true
+                        }
+                    ],
+                    nested_groups: [],
+                    enabled: true
+                }]
+            },
+            
+            oversold: {
+                filter_groups: [{
+                    id: "group1",
+                    logical_operator: "AND", 
+                    rules: [
+                        {
+                            id: "rule1",
+                            left_operand: { type: "field", value: "RSI", field_type: "number" },
+                            operator: "less_than",
+                            right_operand: { type: "constant", value: 30 },
+                            enabled: true
+                        },
+                        {
+                            id: "rule2",
+                            left_operand: { type: "field", value: "close", field_type: "number" },
+                            operator: "greater_than", 
+                            right_operand: { type: "constant", value: 1.0 },
+                            enabled: true
+                        }
+                    ],
+                    nested_groups: [],
+                    enabled: true
+                }]
+            },
+            
+            momentum: {
+                filter_groups: [{
+                    id: "group1",
+                    logical_operator: "AND",
+                    rules: [
+                        {
+                            id: "rule1",
+                            left_operand: { type: "field", value: "change", field_type: "number" },
+                            operator: "greater_than",
+                            right_operand: { type: "constant", value: 5.0 },
+                            enabled: true
+                        },
+                        {
+                            id: "rule2",
+                            left_operand: { type: "field", value: "volume", field_type: "number" },
+                            operator: "greater_than",
+                            right_operand: { type: "constant", value: 100000 },
+                            enabled: true
+                        }
+                    ],
+                    nested_groups: [],
+                    enabled: true
+                }]
+            },
+            
+        };
+
+        function loadExample(exampleKey) {
+            if (filterBuilder && examples[exampleKey]) {
+                filterBuilder.filterGroups = examples[exampleKey].filter_groups;
+                filterBuilder.render();
+                
+                // Show success message
+                const toast = document.createElement('div');
+                toast.className = 'alert alert-success alert-dismissible fade show position-fixed';
+                toast.style.top = '20px';
+                toast.style.right = '20px';
+                toast.style.zIndex = '9999';
+                toast.innerHTML = `
+                    ✅ Loaded "${exampleKey}" example filter
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.body.appendChild(toast);
+                
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 3000);
+            }
+        }
+
+        // Initialize tooltips
+        document.addEventListener('DOMContentLoaded', function() {
+            // Enable Bootstrap tooltips
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        });
+    </script>
+</body>
+</html>

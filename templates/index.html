@@ -414,8 +414,8 @@
             <div class="header">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <h1><i class="fas fa-chart-line"></i> TradingView Screener</h1>
-                        <p class="mb-0">Filter and analyze stocks with advanced criteria</p>
+                <h1><i class="fas fa-chart-line"></i> TradingView Screener</h1>
+                <p class="mb-0">Filter and analyze stocks with advanced criteria</p>
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         <div id="userInfo" style="display: none;">
@@ -427,9 +427,9 @@
                         <button type="button" class="btn btn-outline-light" onclick="showSavedScreenersModal()" id="savedScreenersBtn">
                             <i class="fas fa-bookmark"></i> Saved Screeners
                         </button>
-                        <button type="button" class="btn btn-outline-light" onclick="showPriceUpdater()" id="priceUpdaterBtn">
-                            <i class="fas fa-cogs"></i> Price Updater
-                        </button>
+                        <a href="/filter-builder" class="btn btn-outline-light" target="_blank">
+                            <i class="fas fa-filter"></i> Advanced Filter Builder
+                        </a>
                         <button type="button" class="btn btn-outline-light" onclick="login()" id="loginBtn">
                             <i class="fas fa-sign-in-alt"></i> Login
                         </button>
@@ -501,6 +501,14 @@
                         <div class="form-text">Leave empty for no minimum</div>
                     </div>
                     
+                    <!-- Max Change -->
+                    <div class="form-group">
+                        <label for="max_change" class="form-label">Maximum % Change</label>
+                        <input type="number" class="form-control" id="max_change" name="max_change" 
+                               placeholder="e.g., 15" step="any">
+                        <div class="form-text">Leave empty for no maximum</div>
+                    </div>
+                    
                     <!-- Min SMA20 Above Price % -->
                     <div class="form-group">
                         <label for="min_sma20_above_pct" class="form-label">Minimum SMA20/Close Ratio</label>
@@ -523,6 +531,38 @@
                         <input type="number" class="form-control" id="min_adr_pct" name="min_adr_pct" 
                                placeholder="e.g., 3" step="any" min="0">
                         <div class="form-text">Leave empty for no minimum</div>
+                    </div>
+                    
+                    <!-- Min RSI -->
+                    <div class="form-group">
+                        <label for="min_rsi" class="form-label">Minimum RSI</label>
+                        <input type="number" class="form-control" id="min_rsi" name="min_rsi" 
+                               placeholder="e.g., 30" step="any" min="0" max="100">
+                        <div class="form-text">Leave empty for no minimum (0-100)</div>
+                    </div>
+                    
+                    <!-- Max RSI -->
+                    <div class="form-group">
+                        <label for="max_rsi" class="form-label">Maximum RSI</label>
+                        <input type="number" class="form-control" id="max_rsi" name="max_rsi" 
+                               placeholder="e.g., 70" step="any" min="0" max="100">
+                        <div class="form-text">Leave empty for no maximum (0-100)</div>
+                    </div>
+                    
+                    <!-- Min BB %B -->
+                    <div class="form-group">
+                        <label for="min_bb_percent_b" class="form-label">Minimum BB %B</label>
+                        <input type="number" class="form-control" id="min_bb_percent_b" name="min_bb_percent_b" 
+                               placeholder="e.g., 0.2" step="any" min="0" max="1">
+                        <div class="form-text">Leave empty for no minimum (0-1, 0=lower band, 0.5=middle, 1=upper band)</div>
+                    </div>
+                    
+                    <!-- Max BB %B -->
+                    <div class="form-group">
+                        <label for="max_bb_percent_b" class="form-label">Maximum BB %B</label>
+                        <input type="number" class="form-control" id="max_bb_percent_b" name="max_bb_percent_b" 
+                               placeholder="e.g., 0.8" step="any" min="0" max="1">
+                        <div class="form-text">Leave empty for no maximum (0-1, 0=lower band, 0.5=middle, 1=upper band)</div>
                     </div>
                     
                     <!-- Filter Out OTC -->
@@ -582,9 +622,9 @@
                             </h5>
                             <p class="card-text">Click the button below to download your CSV file</p>
                             <div class="d-flex gap-2 justify-content-center">
-                                <button type="button" class="btn btn-primary" onclick="downloadCSV()">
-                                    <i class="fas fa-file-csv"></i> Download CSV
-                                </button>
+                            <button type="button" class="btn btn-primary" onclick="downloadCSV()">
+                                <i class="fas fa-file-csv"></i> Download CSV
+                            </button>
 
                                 <button type="button" class="btn btn-success" onclick="showSaveScreenerModal()">
                                     <i class="fas fa-save"></i> Save Screener
@@ -903,7 +943,7 @@
                 });
                 
                 // Set the hidden input value based on the active button
-                hiddenInput.value = buttons[0].dataset.value;
+                    hiddenInput.value = buttons[0].dataset.value;
             });
             
             // Clear results
@@ -1164,124 +1204,6 @@
             }, { once: true });
             
             modal.show();
-        }
-        
-        // Show price updater modal
-        function showPriceUpdater() {
-            const modalElement = document.getElementById('priceUpdaterModal');
-            const modal = new bootstrap.Modal(modalElement);
-            modal.show();
-            refreshUpdaterStats();
-        }
-        
-        // Start background price updater
-        async function startUpdater() {
-            try {
-                const response = await fetch('/api/prices/updater/start', {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                
-                if (data.success) {
-                    alert('✅ Background price updater started successfully!');
-                    refreshUpdaterStats();
-                } else {
-                    alert('❌ Error starting price updater: ' + data.error);
-                }
-            } catch (error) {
-                console.error('Error starting updater:', error);
-                alert('❌ Error starting price updater');
-            }
-        }
-        
-        // Stop background price updater
-        async function stopUpdater() {
-            try {
-                const response = await fetch('/api/prices/updater/stop', {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                
-                if (data.success) {
-                    alert('✅ Background price updater stopped successfully!');
-                    refreshUpdaterStats();
-                } else {
-                    alert('❌ Error stopping price updater: ' + data.error);
-                }
-            } catch (error) {
-                console.error('Error stopping updater:', error);
-                alert('❌ Error stopping price updater');
-            }
-        }
-        
-        // Refresh updater statistics
-        async function refreshUpdaterStats() {
-            try {
-                const response = await fetch('/api/prices/updater/stats');
-                const data = await response.json();
-                
-                if (data.success) {
-                    const stats = data.stats;
-                    const statusElement = document.getElementById('updaterStatus');
-                    const statsElement = document.getElementById('updaterStats');
-                    
-                    // Update status
-                    if (stats.running) {
-                        statusElement.innerHTML = '<span class="badge bg-success">Running</span>';
-                    } else {
-                        statusElement.innerHTML = '<span class="badge bg-danger">Stopped</span>';
-                    }
-                    
-                    // Update stats
-                    const lastUpdate = stats.last_update_time ? new Date(stats.last_update_time).toLocaleString() : 'Never';
-                    statsElement.innerHTML = `
-                        <strong>Statistics:</strong><br>
-                        • Total Updates: ${stats.total_updates}<br>
-                        • Last Update: ${lastUpdate}<br>
-                        • Symbols Updated: ${stats.symbols_updated}<br>
-                        • Errors: ${stats.errors}<br>
-                        • Update Interval: ${stats.update_interval} seconds
-                    `;
-                } else {
-                    console.error('Error getting updater stats:', data.error);
-                }
-            } catch (error) {
-                console.error('Error refreshing updater stats:', error);
-            }
-        }
-        
-        // Set update interval
-        async function setUpdateInterval() {
-            const interval = document.getElementById('updateInterval').value;
-            const seconds = parseInt(interval);
-            
-            if (isNaN(seconds) || seconds < 10 || seconds > 300) {
-                alert('❌ Please enter a valid interval between 10 and 300 seconds');
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/prices/updater/interval', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        seconds: seconds
-                    })
-                });
-                const data = await response.json();
-                
-                if (data.success) {
-                    alert('✅ Update interval set successfully!');
-                    refreshUpdaterStats();
-                } else {
-                    alert('❌ Error setting interval: ' + data.error);
-                }
-            } catch (error) {
-                console.error('Error setting interval:', error);
-                alert('❌ Error setting update interval');
-            }
         }
         
         // Load saved screeners
@@ -1612,9 +1534,14 @@
                 'min_price': 'Min Price',
                 'min_relative_volume': 'Min Relative Volume',
                 'min_change': 'Min % Change',
+                'max_change': 'Max % Change',
                 'min_sma20_above_pct': 'Min SMA20/Close Ratio',
                 'min_atr_pct': 'Min ATR %',
                 'min_adr_pct': 'Min ADR %',
+                'min_rsi': 'Min RSI',
+                'max_rsi': 'Max RSI',
+                'min_bb_percent_b': 'Min BB %B',
+                'max_bb_percent_b': 'Max BB %B',
                 'filter_out_otc': 'Filter Out OTC',
                 'bullish_candlestick_patterns_only': 'Bullish Patterns Only'
             };
@@ -1927,59 +1854,5 @@
         </div>
     </div>
     
-    <!-- Price Updater Management Modal -->
-    <div class="modal fade" id="priceUpdaterModal" tabindex="-1" aria-labelledby="priceUpdaterModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-cogs"></i> Background Price Updater</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Status</h6>
-                            <div id="updaterStatus" class="mb-3">
-                                <span class="badge bg-secondary">Loading...</span>
-                            </div>
-                            <div id="updaterStats" class="small text-muted">
-                                Loading statistics...
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Controls</h6>
-                            <div class="d-grid gap-2">
-                                <button type="button" class="btn btn-success btn-sm" onclick="startUpdater()">
-                                    <i class="fas fa-play"></i> Start Updater
-                                </button>
-                                <button type="button" class="btn btn-danger btn-sm" onclick="stopUpdater()">
-                                    <i class="fas fa-stop"></i> Stop Updater
-                                </button>
-                                <button type="button" class="btn btn-info btn-sm" onclick="refreshUpdaterStats()">
-                                    <i class="fas fa-sync"></i> Refresh Stats
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row mt-3">
-                        <div class="col-md-6">
-                            <h6>Update Interval</h6>
-                            <div class="input-group">
-                                <input type="number" id="updateInterval" class="form-control" value="30" min="10" max="300">
-                                <span class="input-group-text">seconds</span>
-                                <button type="button" class="btn btn-primary btn-sm" onclick="setUpdateInterval()">
-                                    <i class="fas fa-save"></i> Set
-                                </button>
-                            </div>
-                            <small class="text-muted">Minimum 10 seconds, maximum 300 seconds</small>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
 </body>
 </html> 

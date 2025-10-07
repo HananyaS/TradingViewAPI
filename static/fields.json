@@ -1,0 +1,677 @@
+{
+  "fields": [
+    {
+      "Name": "name",
+      "Display name": "Symbol Name",
+      "Type": "string",
+      "Group Name": "Basic Info"
+    },
+    {
+      "Name": "exchange",
+      "Display name": "Exchange",
+      "Type": "enum",
+      "Group Name": "Basic Info"
+    },
+    {
+      "Name": "sector",
+      "Display name": "Sector",
+      "Type": "enum",
+      "Group Name": "Basic Info"
+    },
+    {
+      "Name": "industry",
+      "Display name": "Industry",
+      "Type": "enum",
+      "Group Name": "Basic Info"
+    },
+    {
+      "Name": "country",
+      "Display name": "Country",
+      "Type": "enum",
+      "Group Name": "Basic Info"
+    },
+    {
+      "Name": "market_cap_basic",
+      "Display name": "Market Cap",
+      "Type": "number",
+      "Group Name": "Basic Info"
+    },
+    {
+      "Name": "close",
+      "Display name": "Close Price",
+      "Type": "number",
+      "Group Name": "Price"
+    },
+    {
+      "Name": "open",
+      "Display name": "Open Price",
+      "Type": "number",
+      "Group Name": "Price"
+    },
+    {
+      "Name": "high",
+      "Display name": "High Price",
+      "Type": "number",
+      "Group Name": "Price"
+    },
+    {
+      "Name": "low",
+      "Display name": "Low Price",
+      "Type": "number",
+      "Group Name": "Price"
+    },
+    {
+      "Name": "change",
+      "Display name": "Price Change %",
+      "Type": "number",
+      "Group Name": "Price"
+    },
+    {
+      "Name": "change_abs",
+      "Display name": "Price Change (Absolute)",
+      "Type": "number",
+      "Group Name": "Price"
+    },
+    {
+      "Name": "gap",
+      "Display name": "Gap %",
+      "Type": "number",
+      "Group Name": "Price"
+    },
+    {
+      "Name": "volume",
+      "Display name": "Volume",
+      "Type": "number",
+      "Group Name": "Volume"
+    },
+    {
+      "Name": "relative_volume",
+      "Display name": "Relative Volume",
+      "Type": "number",
+      "Group Name": "Volume"
+    },
+    {
+      "Name": "average_volume_10d_calc",
+      "Display name": "Average Volume (10 days)",
+      "Type": "number",
+      "Group Name": "Volume"
+    },
+    {
+      "Name": "average_volume_30d_calc",
+      "Display name": "Average Volume (30 days)",
+      "Type": "number",
+      "Group Name": "Volume"
+    },
+    {
+      "Name": "average_volume_60d_calc",
+      "Display name": "Average Volume (60 days)",
+      "Type": "number",
+      "Group Name": "Volume"
+    },
+    {
+      "Name": "average_volume_90d_calc",
+      "Display name": "Average Volume (90 days)",
+      "Type": "number",
+      "Group Name": "Volume"
+    },
+    {
+      "Name": "SMA5",
+      "Display name": "Simple Moving Average (5)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "SMA10",
+      "Display name": "Simple Moving Average (10)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "SMA20",
+      "Display name": "Simple Moving Average (20)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "SMA50",
+      "Display name": "Simple Moving Average (50)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "SMA100",
+      "Display name": "Simple Moving Average (100)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "SMA200",
+      "Display name": "Simple Moving Average (200)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "EMA5",
+      "Display name": "Exponential Moving Average (5)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "EMA10",
+      "Display name": "Exponential Moving Average (10)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "EMA20",
+      "Display name": "Exponential Moving Average (20)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "EMA50",
+      "Display name": "Exponential Moving Average (50)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "EMA100",
+      "Display name": "Exponential Moving Average (100)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "EMA200",
+      "Display name": "Exponential Moving Average (200)",
+      "Type": "number",
+      "Group Name": "Moving Averages"
+    },
+    {
+      "Name": "RSI",
+      "Display name": "Relative Strength Index",
+      "Type": "number",
+      "Group Name": "Oscillators"
+    },
+    {
+      "Name": "RSI[1]",
+      "Display name": "RSI (Previous)",
+      "Type": "number",
+      "Group Name": "Oscillators"
+    },
+    {
+      "Name": "Stoch.K",
+      "Display name": "Stochastic %K",
+      "Type": "number",
+      "Group Name": "Oscillators"
+    },
+    {
+      "Name": "Stoch.D",
+      "Display name": "Stochastic %D",
+      "Type": "number",
+      "Group Name": "Oscillators"
+    },
+    {
+      "Name": "CCI20",
+      "Display name": "Commodity Channel Index (20)",
+      "Type": "number",
+      "Group Name": "Oscillators"
+    },
+    {
+      "Name": "ADX",
+      "Display name": "Average Directional Index",
+      "Type": "number",
+      "Group Name": "Oscillators"
+    },
+    {
+      "Name": "AO",
+      "Display name": "Awesome Oscillator",
+      "Type": "number",
+      "Group Name": "Oscillators"
+    },
+    {
+      "Name": "Mom",
+      "Display name": "Momentum",
+      "Type": "number",
+      "Group Name": "Oscillators"
+    },
+    {
+      "Name": "MACD.macd",
+      "Display name": "MACD Line",
+      "Type": "number",
+      "Group Name": "Oscillators"
+    },
+    {
+      "Name": "MACD.signal",
+      "Display name": "MACD Signal",
+      "Type": "number",
+      "Group Name": "Oscillators"
+    },
+    {
+      "Name": "BB.lower",
+      "Display name": "Bollinger Bands Lower",
+      "Type": "number",
+      "Group Name": "Bollinger Bands"
+    },
+    {
+      "Name": "BB.upper",
+      "Display name": "Bollinger Bands Upper",
+      "Type": "number",
+      "Group Name": "Bollinger Bands"
+    },
+    {
+      "Name": "BB.basis",
+      "Display name": "Bollinger Bands Basis",
+      "Type": "number",
+      "Group Name": "Bollinger Bands"
+    },
+    {
+      "Name": "ATR",
+      "Display name": "Average True Range",
+      "Type": "number",
+      "Group Name": "Other Indicators"
+    },
+    {
+      "Name": "ADR",
+      "Display name": "Average Daily Range",
+      "Type": "number",
+      "Group Name": "Other Indicators"
+    },
+    {
+      "Name": "volatility",
+      "Display name": "Volatility",
+      "Type": "number",
+      "Group Name": "Other Indicators"
+    },
+    {
+      "Name": "VWAP",
+      "Display name": "Volume Weighted Average Price",
+      "Type": "number",
+      "Group Name": "Other Indicators"
+    },
+    {
+      "Name": "total_revenue",
+      "Display name": "Total Revenue",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "revenue_per_share",
+      "Display name": "Revenue Per Share",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "quarterly_revenue_growth_yoy",
+      "Display name": "Quarterly Revenue Growth YoY",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "gross_profit",
+      "Display name": "Gross Profit",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "diluted_eps",
+      "Display name": "Diluted EPS",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "quarterly_earnings_growth_yoy",
+      "Display name": "Quarterly Earnings Growth YoY",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "net_income",
+      "Display name": "Net Income",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "ebitda",
+      "Display name": "EBITDA",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "net_debt",
+      "Display name": "Net Debt",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "total_debt",
+      "Display name": "Total Debt",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "current_ratio",
+      "Display name": "Current Ratio",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "debt_to_equity",
+      "Display name": "Debt to Equity",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "return_on_equity",
+      "Display name": "Return on Equity",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "return_on_assets",
+      "Display name": "Return on Assets",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "return_on_investment",
+      "Display name": "Return on Investment",
+      "Type": "number",
+      "Group Name": "Fundamentals"
+    },
+    {
+      "Name": "price_earnings_ttm",
+      "Display name": "P/E Ratio (TTM)",
+      "Type": "number",
+      "Group Name": "Valuation Ratios"
+    },
+    {
+      "Name": "price_revenue_ttm",
+      "Display name": "P/S Ratio (TTM)",
+      "Type": "number",
+      "Group Name": "Valuation Ratios"
+    },
+    {
+      "Name": "price_book_fq",
+      "Display name": "P/B Ratio",
+      "Type": "number",
+      "Group Name": "Valuation Ratios"
+    },
+    {
+      "Name": "price_cash_f_operating_activities_ttm",
+      "Display name": "P/CF Ratio",
+      "Type": "number",
+      "Group Name": "Valuation Ratios"
+    },
+    {
+      "Name": "enterprise_value_revenue_ttm",
+      "Display name": "EV/Revenue",
+      "Type": "number",
+      "Group Name": "Valuation Ratios"
+    },
+    {
+      "Name": "enterprise_value_ebitda_ttm",
+      "Display name": "EV/EBITDA",
+      "Type": "number",
+      "Group Name": "Valuation Ratios"
+    },
+    {
+      "Name": "price_free_cash_flow_ttm",
+      "Display name": "P/FCF Ratio",
+      "Type": "number",
+      "Group Name": "Valuation Ratios"
+    },
+    {
+      "Name": "dividends_yield",
+      "Display name": "Dividend Yield",
+      "Type": "number",
+      "Group Name": "Dividends"
+    },
+    {
+      "Name": "dividends_per_share_fq",
+      "Display name": "Dividends Per Share",
+      "Type": "number",
+      "Group Name": "Dividends"
+    },
+    {
+      "Name": "dividend_payout_ratio",
+      "Display name": "Dividend Payout Ratio",
+      "Type": "number",
+      "Group Name": "Dividends"
+    },
+    {
+      "Name": "Candle.Hammer",
+      "Display name": "Hammer",
+      "Type": "number",
+      "Group Name": "Candlestick Patterns"
+    },
+    {
+      "Name": "Candle.Engulfing.Bullish",
+      "Display name": "Bullish Engulfing",
+      "Type": "number",
+      "Group Name": "Candlestick Patterns"
+    },
+    {
+      "Name": "Candle.Engulfing.Bearish",
+      "Display name": "Bearish Engulfing",
+      "Type": "number",
+      "Group Name": "Candlestick Patterns"
+    },
+    {
+      "Name": "Candle.Doji",
+      "Display name": "Doji",
+      "Type": "number",
+      "Group Name": "Candlestick Patterns"
+    },
+    {
+      "Name": "Candle.Marubozu.White",
+      "Display name": "White Marubozu",
+      "Type": "number",
+      "Group Name": "Candlestick Patterns"
+    },
+    {
+      "Name": "Candle.Marubozu.Black",
+      "Display name": "Black Marubozu",
+      "Type": "number",
+      "Group Name": "Candlestick Patterns"
+    },
+    {
+      "Name": "Candle.DragonFly.Doji",
+      "Display name": "Dragonfly Doji",
+      "Type": "number",
+      "Group Name": "Candlestick Patterns"
+    },
+    {
+      "Name": "Candle.GraveStone.Doji",
+      "Display name": "Gravestone Doji",
+      "Type": "number",
+      "Group Name": "Candlestick Patterns"
+    },
+    {
+      "Name": "Perf.W",
+      "Display name": "Performance (1 Week)",
+      "Type": "number",
+      "Group Name": "Performance"
+    },
+    {
+      "Name": "Perf.1M",
+      "Display name": "Performance (1 Month)",
+      "Type": "number",
+      "Group Name": "Performance"
+    },
+    {
+      "Name": "Perf.3M",
+      "Display name": "Performance (3 Months)",
+      "Type": "number",
+      "Group Name": "Performance"
+    },
+    {
+      "Name": "Perf.6M",
+      "Display name": "Performance (6 Months)",
+      "Type": "number",
+      "Group Name": "Performance"
+    },
+    {
+      "Name": "Perf.Y",
+      "Display name": "Performance (1 Year)",
+      "Type": "number",
+      "Group Name": "Performance"
+    },
+    {
+      "Name": "Perf.YTD",
+      "Display name": "Performance (YTD)",
+      "Type": "number",
+      "Group Name": "Performance"
+    },
+    {
+      "Name": "Recommend.MA",
+      "Display name": "Analyst Recommendation",
+      "Type": "number",
+      "Group Name": "Analyst Ratings"
+    },
+    {
+      "Name": "target_price_average",
+      "Display name": "Average Target Price",
+      "Type": "number",
+      "Group Name": "Analyst Ratings"
+    },
+    {
+      "Name": "number_of_analysts",
+      "Display name": "Number of Analysts",
+      "Type": "number",
+      "Group Name": "Analyst Ratings"
+    }
+  ],
+  "grouped_fields": {
+    "Basic Info": [
+      {"Name": "name", "Display name": "Symbol Name", "Type": "string", "Group Name": "Basic Info"},
+      {"Name": "exchange", "Display name": "Exchange", "Type": "enum", "Group Name": "Basic Info"},
+      {"Name": "sector", "Display name": "Sector", "Type": "enum", "Group Name": "Basic Info"},
+      {"Name": "industry", "Display name": "Industry", "Type": "enum", "Group Name": "Basic Info"},
+      {"Name": "country", "Display name": "Country", "Type": "enum", "Group Name": "Basic Info"},
+      {"Name": "market_cap_basic", "Display name": "Market Cap", "Type": "number", "Group Name": "Basic Info"}
+    ],
+    "Price": [
+      {"Name": "close", "Display name": "Close Price", "Type": "number", "Group Name": "Price"},
+      {"Name": "open", "Display name": "Open Price", "Type": "number", "Group Name": "Price"},
+      {"Name": "high", "Display name": "High Price", "Type": "number", "Group Name": "Price"},
+      {"Name": "low", "Display name": "Low Price", "Type": "number", "Group Name": "Price"},
+      {"Name": "change", "Display name": "Price Change %", "Type": "number", "Group Name": "Price"},
+      {"Name": "change_abs", "Display name": "Price Change (Absolute)", "Type": "number", "Group Name": "Price"},
+      {"Name": "gap", "Display name": "Gap %", "Type": "number", "Group Name": "Price"}
+    ],
+    "Volume": [
+      {"Name": "volume", "Display name": "Volume", "Type": "number", "Group Name": "Volume"},
+      {"Name": "relative_volume", "Display name": "Relative Volume", "Type": "number", "Group Name": "Volume"},
+      {"Name": "average_volume_10d_calc", "Display name": "Average Volume (10 days)", "Type": "number", "Group Name": "Volume"},
+      {"Name": "average_volume_30d_calc", "Display name": "Average Volume (30 days)", "Type": "number", "Group Name": "Volume"},
+      {"Name": "average_volume_60d_calc", "Display name": "Average Volume (60 days)", "Type": "number", "Group Name": "Volume"},
+      {"Name": "average_volume_90d_calc", "Display name": "Average Volume (90 days)", "Type": "number", "Group Name": "Volume"}
+    ],
+    "Moving Averages": [
+      {"Name": "SMA5", "Display name": "Simple Moving Average (5)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "SMA10", "Display name": "Simple Moving Average (10)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "SMA20", "Display name": "Simple Moving Average (20)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "SMA50", "Display name": "Simple Moving Average (50)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "SMA100", "Display name": "Simple Moving Average (100)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "SMA200", "Display name": "Simple Moving Average (200)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "EMA5", "Display name": "Exponential Moving Average (5)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "EMA10", "Display name": "Exponential Moving Average (10)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "EMA20", "Display name": "Exponential Moving Average (20)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "EMA50", "Display name": "Exponential Moving Average (50)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "EMA100", "Display name": "Exponential Moving Average (100)", "Type": "number", "Group Name": "Moving Averages"},
+      {"Name": "EMA200", "Display name": "Exponential Moving Average (200)", "Type": "number", "Group Name": "Moving Averages"}
+    ],
+    "Oscillators": [
+      {"Name": "RSI", "Display name": "Relative Strength Index", "Type": "number", "Group Name": "Oscillators"},
+      {"Name": "RSI[1]", "Display name": "RSI (Previous)", "Type": "number", "Group Name": "Oscillators"},
+      {"Name": "Stoch.K", "Display name": "Stochastic %K", "Type": "number", "Group Name": "Oscillators"},
+      {"Name": "Stoch.D", "Display name": "Stochastic %D", "Type": "number", "Group Name": "Oscillators"},
+      {"Name": "CCI20", "Display name": "Commodity Channel Index (20)", "Type": "number", "Group Name": "Oscillators"},
+      {"Name": "ADX", "Display name": "Average Directional Index", "Type": "number", "Group Name": "Oscillators"},
+      {"Name": "AO", "Display name": "Awesome Oscillator", "Type": "number", "Group Name": "Oscillators"},
+      {"Name": "Mom", "Display name": "Momentum", "Type": "number", "Group Name": "Oscillators"},
+      {"Name": "MACD.macd", "Display name": "MACD Line", "Type": "number", "Group Name": "Oscillators"},
+      {"Name": "MACD.signal", "Display name": "MACD Signal", "Type": "number", "Group Name": "Oscillators"}
+    ],
+    "Bollinger Bands": [
+      {"Name": "BB.lower", "Display name": "Bollinger Bands Lower", "Type": "number", "Group Name": "Bollinger Bands"},
+      {"Name": "BB.upper", "Display name": "Bollinger Bands Upper", "Type": "number", "Group Name": "Bollinger Bands"},
+      {"Name": "BB.basis", "Display name": "Bollinger Bands Basis", "Type": "number", "Group Name": "Bollinger Bands"}
+    ],
+    "Other Indicators": [
+      {"Name": "ATR", "Display name": "Average True Range", "Type": "number", "Group Name": "Other Indicators"},
+      {"Name": "ADR", "Display name": "Average Daily Range", "Type": "number", "Group Name": "Other Indicators"},
+      {"Name": "volatility", "Display name": "Volatility", "Type": "number", "Group Name": "Other Indicators"},
+      {"Name": "VWAP", "Display name": "Volume Weighted Average Price", "Type": "number", "Group Name": "Other Indicators"}
+    ],
+    "Fundamentals": [
+      {"Name": "total_revenue", "Display name": "Total Revenue", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "revenue_per_share", "Display name": "Revenue Per Share", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "quarterly_revenue_growth_yoy", "Display name": "Quarterly Revenue Growth YoY", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "gross_profit", "Display name": "Gross Profit", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "diluted_eps", "Display name": "Diluted EPS", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "quarterly_earnings_growth_yoy", "Display name": "Quarterly Earnings Growth YoY", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "net_income", "Display name": "Net Income", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "ebitda", "Display name": "EBITDA", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "net_debt", "Display name": "Net Debt", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "total_debt", "Display name": "Total Debt", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "current_ratio", "Display name": "Current Ratio", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "debt_to_equity", "Display name": "Debt to Equity", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "return_on_equity", "Display name": "Return on Equity", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "return_on_assets", "Display name": "Return on Assets", "Type": "number", "Group Name": "Fundamentals"},
+      {"Name": "return_on_investment", "Display name": "Return on Investment", "Type": "number", "Group Name": "Fundamentals"}
+    ],
+    "Valuation Ratios": [
+      {"Name": "price_earnings_ttm", "Display name": "P/E Ratio (TTM)", "Type": "number", "Group Name": "Valuation Ratios"},
+      {"Name": "price_revenue_ttm", "Display name": "P/S Ratio (TTM)", "Type": "number", "Group Name": "Valuation Ratios"},
+      {"Name": "price_book_fq", "Display name": "P/B Ratio", "Type": "number", "Group Name": "Valuation Ratios"},
+      {"Name": "price_cash_f_operating_activities_ttm", "Display name": "P/CF Ratio", "Type": "number", "Group Name": "Valuation Ratios"},
+      {"Name": "enterprise_value_revenue_ttm", "Display name": "EV/Revenue", "Type": "number", "Group Name": "Valuation Ratios"},
+      {"Name": "enterprise_value_ebitda_ttm", "Display name": "EV/EBITDA", "Type": "number", "Group Name": "Valuation Ratios"},
+      {"Name": "price_free_cash_flow_ttm", "Display name": "P/FCF Ratio", "Type": "number", "Group Name": "Valuation Ratios"}
+    ],
+    "Dividends": [
+      {"Name": "dividends_yield", "Display name": "Dividend Yield", "Type": "number", "Group Name": "Dividends"},
+      {"Name": "dividends_per_share_fq", "Display name": "Dividends Per Share", "Type": "number", "Group Name": "Dividends"},
+      {"Name": "dividend_payout_ratio", "Display name": "Dividend Payout Ratio", "Type": "number", "Group Name": "Dividends"}
+    ],
+    "Candlestick Patterns": [
+      {"Name": "Candle.Hammer", "Display name": "Hammer", "Type": "number", "Group Name": "Candlestick Patterns"},
+      {"Name": "Candle.Engulfing.Bullish", "Display name": "Bullish Engulfing", "Type": "number", "Group Name": "Candlestick Patterns"},
+      {"Name": "Candle.Engulfing.Bearish", "Display name": "Bearish Engulfing", "Type": "number", "Group Name": "Candlestick Patterns"},
+      {"Name": "Candle.Doji", "Display name": "Doji", "Type": "number", "Group Name": "Candlestick Patterns"},
+      {"Name": "Candle.Marubozu.White", "Display name": "White Marubozu", "Type": "number", "Group Name": "Candlestick Patterns"},
+      {"Name": "Candle.Marubozu.Black", "Display name": "Black Marubozu", "Type": "number", "Group Name": "Candlestick Patterns"},
+      {"Name": "Candle.DragonFly.Doji", "Display name": "Dragonfly Doji", "Type": "number", "Group Name": "Candlestick Patterns"},
+      {"Name": "Candle.GraveStone.Doji", "Display name": "Gravestone Doji", "Type": "number", "Group Name": "Candlestick Patterns"}
+    ],
+    "Performance": [
+      {"Name": "Perf.W", "Display name": "Performance (1 Week)", "Type": "number", "Group Name": "Performance"},
+      {"Name": "Perf.1M", "Display name": "Performance (1 Month)", "Type": "number", "Group Name": "Performance"},
+      {"Name": "Perf.3M", "Display name": "Performance (3 Months)", "Type": "number", "Group Name": "Performance"},
+      {"Name": "Perf.6M", "Display name": "Performance (6 Months)", "Type": "number", "Group Name": "Performance"},
+      {"Name": "Perf.Y", "Display name": "Performance (1 Year)", "Type": "number", "Group Name": "Performance"},
+      {"Name": "Perf.YTD", "Display name": "Performance (YTD)", "Type": "number", "Group Name": "Performance"}
+    ],
+    "Analyst Ratings": [
+      {"Name": "Recommend.MA", "Display name": "Analyst Recommendation", "Type": "number", "Group Name": "Analyst Ratings"},
+      {"Name": "target_price_average", "Display name": "Average Target Price", "Type": "number", "Group Name": "Analyst Ratings"},
+      {"Name": "number_of_analysts", "Display name": "Number of Analysts", "Type": "number", "Group Name": "Analyst Ratings"}
+    ]
+  },
+  "groups": [
+    "Basic Info",
+    "Price", 
+    "Volume",
+    "Moving Averages",
+    "Oscillators",
+    "Bollinger Bands",
+    "Other Indicators",
+    "Fundamentals",
+    "Valuation Ratios",
+    "Dividends",
+    "Candlestick Patterns",
+    "Performance",
+    "Analyst Ratings"
+  ]
+}

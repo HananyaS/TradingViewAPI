@@ -163,3 +163,50 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# React/Node.js files (for future React implementation)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# React build output
+build/
+dist/
+
+# Tailwind CSS
+tailwind.config.js
+postcss.config.js
+
+# Test files and debug artifacts
+test_*.html
+test_*.py
+debug_*.py
+*_debug.py
+
+# Database files (if using SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# Migration files (keep structure, ignore data)
+migrations/versions/*.pyc
+alembic.ini
+
+# IDE and editor files
+.vscode/settings.json
+.idea/workspace.xml
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini

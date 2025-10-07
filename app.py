@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, send_file, render_template, session, redirect, url_for
 from flask_cors import CORS
 import io
+import json
 from datetime import datetime
 import pandas as pd
 import math
@@ -8,7 +9,9 @@ import urllib.parse
 from run_query import query_by_params
 from mongodb_config import mongodb_manager
 from google_oauth import create_oauth_flow, login_required, get_user_info, verify_google_token
-from price_updater import start_price_updater, stop_price_updater, get_price_updater_stats, set_price_update_interval
+from filter_schemas import ScreenerRequest, ScreenerResponse, FieldsMetadata, FieldMetadata
+from filter_serializer import FilterSerializer
+from pydantic import ValidationError
 import os
 
 # Load environment variables from .env file for local development
@@ -28,6 +31,29 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 CORS(app)
 
+# Initialize filter serializer with field metadata
+_filter_serializer = None
+
+def get_filter_serializer():
+    """Get or create the filter serializer with field metadata"""
+    global _filter_serializer
+    if _filter_serializer is None:
+        try:
+            import json
+            with open('static/fields.json', 'r') as f:
+                fields_data = json.load(f)
+            
+            field_metadata = {
+                field['Name']: FieldMetadata(**field) 
+                for field in fields_data['fields']
+            }
+            _filter_serializer = FilterSerializer(field_metadata)
+        except Exception as e:
+            print(f"❌ Error loading field metadata: {e}")
+            _filter_serializer = FilterSerializer({})
+    
+    return _filter_serializer
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -39,6 +65,79 @@ def journal():
 @app.route('/watchlist')
 def watchlist():
     return render_template('watchlist.html')
+
+@app.route('/filter-builder')
+def filter_builder():
+    return render_template('filter_builder.html')
+
+@app.route('/api/test-filter', methods=['POST'])
+def test_filter():
+    """Test endpoint for debugging filter issues"""
+    try:
+        print("🧪 Test filter endpoint called")
+        
+        # Create a simple test request
+        from filter_schemas import ScreenerRequest, FilterGroup, FilterRule, FilterOperand, OperatorType, LogicalOperator
+        
+        # Create a simple rule: close > 10
+        rule = FilterRule(
+            id="test_rule_1",
+            left_operand=FilterOperand(type="field", value="close"),
+            operator=OperatorType.GREATER_THAN,
+            right_operand=FilterOperand(type="constant", value=10.0),
+            enabled=True
+        )
+        
+        # Create filter group
+        group = FilterGroup(
+            id="test_group_1",
+            logical_operator=LogicalOperator.AND,
+            rules=[rule],
+            nested_groups=[],
+            enabled=True
+        )
+        
+        # Create screener request
+        request = ScreenerRequest(
+            filter_groups=[group],
+            columns=None,  # Use defaults
+            # limit=100,
+            sort_by="market_cap_basic",
+            sort_ascending=False
+        )
+        
+        print("✅ Test request created")
+        
+        # Get filter serializer
+        serializer = get_filter_serializer()
+        
+        # Try to serialize
+        print("🚀 Testing serialization...")
+        query = serializer.serialize_screener_request(request)
+        
+        print("✅ Serialization successful!")
+        
+        # Try to execute
+        print("📡 Testing query execution...")
+        columns, results_df = query.get_scanner_data()
+        
+        print(f"✅ Query execution successful! Got {len(results_df)} results")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Test filter worked successfully',
+            'count': len(results_df),
+            'columns': list(columns) if columns else []
+        })
+        
+    except Exception as e:
+        print(f"❌ Test filter failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'Test filter failed: {str(e)}'
+        }), 500
 
 @app.route('/login')
 def login():
@@ -390,66 +489,6 @@ def fetch_live_prices():
         print(f"Error fetching live prices: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/api/prices/updater/start', methods=['POST'])
-def start_background_updater():
-    """Start the background price updater"""
-    try:
-        start_price_updater()
-        return jsonify({
-            'success': True,
-            'message': 'Background price updater started'
-        })
-    except Exception as e:
-        print(f"Error starting price updater: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/prices/updater/stop', methods=['POST'])
-def stop_background_updater():
-    """Stop the background price updater"""
-    try:
-        stop_price_updater()
-        return jsonify({
-            'success': True,
-            'message': 'Background price updater stopped'
-        })
-    except Exception as e:
-        print(f"Error stopping price updater: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/prices/updater/stats', methods=['GET'])
-def get_updater_stats():
-    """Get background price updater statistics"""
-    try:
-        stats = get_price_updater_stats()
-        return jsonify({
-            'success': True,
-            'stats': stats
-        })
-    except Exception as e:
-        print(f"Error getting updater stats: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/prices/updater/interval', methods=['POST'])
-def set_updater_interval():
-    """Set the background price updater interval"""
-    try:
-        data = request.get_json()
-        seconds = data.get('seconds', 30)
-        
-        if not isinstance(seconds, int) or seconds < 10:
-            return jsonify({
-                'success': False,
-                'error': 'Interval must be an integer >= 10 seconds'
-            })
-        
-        set_price_update_interval(seconds)
-        return jsonify({
-            'success': True,
-            'message': f'Update interval set to {seconds} seconds'
-        })
-    except Exception as e:
-        print(f"Error setting updater interval: {e}")
-        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/favicon.ico')
 def favicon():
@@ -459,23 +498,249 @@ def favicon():
 def logo():
     return send_file('trv_api_logo.svg', mimetype='image/svg+xml')
 
+@app.route('/api/fields', methods=['GET'])
+def get_fields_metadata():
+    """Get field metadata for the dynamic filter builder"""
+    try:
+        print("🔍 Loading field metadata from static/fields.json...")
+        
+        # Check if file exists
+        import os
+        if not os.path.exists('static/fields.json'):
+            raise FileNotFoundError("fields.json file not found in static directory")
+        
+        with open('static/fields.json', 'r', encoding='utf-8') as f:
+            fields_data = json.load(f)
+        
+        # Validate the data structure
+        if 'fields' not in fields_data:
+            raise ValueError("Invalid fields.json: missing 'fields' key")
+        if 'groups' not in fields_data:
+            raise ValueError("Invalid fields.json: missing 'groups' key")
+        if 'grouped_fields' not in fields_data:
+            raise ValueError("Invalid fields.json: missing 'grouped_fields' key")
+        
+        print(f"✅ Loaded {len(fields_data['fields'])} fields in {len(fields_data['groups'])} groups")
+        
+        return jsonify({
+            'success': True,
+            'data': fields_data
+        })
+    except FileNotFoundError as e:
+        error_msg = f'Field metadata file not found: {str(e)}'
+        print(f"❌ {error_msg}")
+        return jsonify({
+            'success': False,
+            'error': error_msg
+        }), 404
+    except json.JSONDecodeError as e:
+        error_msg = f'Invalid JSON in fields.json: {str(e)}'
+        print(f"❌ {error_msg}")
+        return jsonify({
+            'success': False,
+            'error': error_msg
+        }), 500
+    except Exception as e:
+        error_msg = f'Error loading field metadata: {str(e)}'
+        print(f"❌ {error_msg}")
+        return jsonify({
+            'success': False,
+            'error': error_msg
+        }), 500
+
+@app.route('/api/screener', methods=['POST'])
+def dynamic_screener():
+    """Dynamic screener API with flexible filter builder"""
+    try:
+        data = request.get_json()
+        
+        # Debug logging
+        print(f"🔍 Received dynamic screener request: {json.dumps(data, indent=2)}")
+        
+        # Validate request using Pydantic
+        try:
+            # First check the raw data structure
+            print(f"🔍 Raw data validation:")
+            print(f"   Type: {type(data)}")
+            if isinstance(data, dict):
+                print(f"   Keys: {list(data.keys())}")
+                if 'filter_groups' in data:
+                    print(f"   filter_groups type: {type(data['filter_groups'])}")
+                    if isinstance(data['filter_groups'], list):
+                        print(f"   filter_groups length: {len(data['filter_groups'])}")
+                    else:
+                        print(f"   ❌ filter_groups is not a list: {data['filter_groups']}")
+            
+            screener_request = ScreenerRequest(**data)
+            print(f"✅ Request validation successful")
+            print(f"📋 Filter groups: {len(screener_request.filter_groups)}")
+            for i, group in enumerate(screener_request.filter_groups):
+                print(f"   Group {i}: {len(group.rules)} rules, enabled={group.enabled}")
+                for j, rule in enumerate(group.rules):
+                    print(f"     Rule {j}: {rule.left_operand.value} {rule.operator} {rule.right_operand.value}")
+        except ValidationError as e:
+            print(f"❌ Request validation failed: {e}")
+            print(f"   Validation errors: {e.errors()}")
+            return jsonify({
+                'success': False,
+                'message': 'Invalid request format',
+                'errors': e.errors()
+            }), 400
+        except Exception as e:
+            print(f"❌ Unexpected error during validation: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'message': f'Unexpected validation error: {str(e)}'
+            }), 500
+        
+        # Get filter serializer
+        serializer = get_filter_serializer()
+        
+        # Use dynamic TradingView Query serialization
+        print(f"🚀 Building dynamic TradingView query...")
+        try:
+            query = serializer.serialize_screener_request(screener_request)
+            print(f"📋 Query built successfully with {len(screener_request.filter_groups)} filter groups")
+            
+            # Execute the query
+            print(f"📡 Executing TradingView query...")
+            columns, results_df = query.get_scanner_data()
+            
+            print(f"✅ Query executed successfully: {len(results_df)} results")
+
+        except Exception as query_error:
+            print(f"❌ Error building or executing TradingView query: {query_error}")
+            return jsonify({
+                'success': False,
+                'message': f'Error processing dynamic screener request: {str(query_error)}',
+                'count': 0
+            }), 500
+        
+        if results_df.empty:
+            return jsonify({
+                'success': False,
+                'message': 'No symbols found matching the criteria.',
+                'count': 0
+            })
+        
+        # Apply custom column selection if specified
+        if screener_request.columns:
+            available_columns = [col for col in screener_request.columns if col in results_df.columns]
+            if available_columns:
+                display_df = results_df[available_columns]
+            else:
+                display_df = results_df
+        else:
+            display_df = results_df
+        
+        # Apply custom sorting if specified
+        if screener_request.sort_by and screener_request.sort_by in display_df.columns:
+            display_df = display_df.sort_values(
+                screener_request.sort_by, 
+                ascending=screener_request.sort_ascending
+            )
+        
+        # Apply limit
+        if screener_request.limit and screener_request.limit > 0:
+            display_df = display_df.head(screener_request.limit)
+        
+        # Create TradingView links (reuse existing logic)
+        def create_tradingview_link(row):
+            symbol = row['name']
+            exchange = row['exchange']
+            
+            exchange_mapping = {
+                'NASDAQ': 'NASDAQ', 'NYSE': 'NYSE', 'NYSE AMERICAN': 'NYSEAMERICAN',
+                'NYSE ARCA': 'NYSEARCA', 'CBOE': 'CBOE', 'CBOE BZX': 'CBOEBZX',
+                'CBOE BYX': 'CBOEBYX', 'CBOE EDGX': 'CBOEEDGX', 'CBOE EDGA': 'CBOEEDGA',
+                'IEX': 'IEX', 'OTC': 'OTC', 'OTC MARKETS': 'OTCMARKETS'
+            }
+            
+            tv_exchange = exchange_mapping.get(exchange, exchange)
+            symbol_pair = f"{tv_exchange}-{symbol}"
+            encoded_symbol = urllib.parse.quote(symbol_pair)
+            
+            return f"https://www.tradingview.com/symbols/{encoded_symbol}/?utm_source=androidapp&utm_medium=share"
+        
+        # Add TradingView links
+        display_df['tradingview_link'] = display_df.apply(create_tradingview_link, axis=1)
+        
+        # Create CSV export (without tradingview_link column)
+        csv_export_df = display_df.drop(columns=['tradingview_link'])
+        csv_buffer = io.StringIO()
+        csv_export_df.to_csv(csv_buffer, index=False)
+        csv_buffer.seek(0)
+        
+        # Prepare response data (replace NaN with None)
+        all_data_df = display_df.replace({pd.NA: None, float('nan'): None, math.nan: None})
+        all_data = all_data_df.to_dict(orient='records')
+        display_columns = [col for col in display_df.columns if col != 'tradingview_link']
+        
+        response_data = ScreenerResponse(
+            success=True,
+            count=len(display_df),
+            data=all_data,
+            columns=display_columns,
+            message=f'Found {len(display_df)} symbols using dynamic filters!',
+            csv_data=csv_buffer.getvalue(),
+            filename=f"dynamic_screener_results_{datetime.today().strftime('%Y%m%d')}.csv"
+        )
+        
+        return jsonify(response_data.dict())
+        
+    except Exception as e:
+        print(f"❌ Error in dynamic screener: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error processing dynamic screener request: {str(e)}',
+            'count': 0
+        }), 500
+
 @app.route('/api/query', methods=['POST'])
 def api_query():
     try:
         data = request.get_json()
+        
+        # Debug logging
+        print(f"🔍 Received query data: {data}")
         
         # Extract parameters from request
         us_exchanges_only = data.get('us_exchanges_only', True)
         min_price = data.get('min_price')
         min_relative_volume = data.get('min_relative_volume')
         min_change = data.get('min_change')
+        max_change = data.get('max_change')
         min_sma20_above_pct = data.get('min_sma20_above_pct')
         min_atr_pct = data.get('min_atr_pct')
         min_adr_pct = data.get('min_adr_pct')
+        min_rsi = data.get('min_rsi')
+        max_rsi = data.get('max_rsi')
+        min_bb_percent_b = data.get('min_bb_percent_b')
+        max_bb_percent_b = data.get('max_bb_percent_b')
         filter_out_otc = data.get('filter_out_otc', True)
         bullish_candlestick_patterns_only = data.get('bullish_candlestick_patterns_only', False)
         
+        # Debug logging for extracted parameters
+        print(f"📊 Extracted parameters:")
+        print(f"   min_change: {min_change} (type: {type(min_change)})")
+        print(f"   max_change: {max_change} (type: {type(max_change)})")
+        print(f"   min_rsi: {min_rsi} (type: {type(min_rsi)})")
+        print(f"   max_rsi: {max_rsi} (type: {type(max_rsi)})")
+        print(f"   min_bb_percent_b: {min_bb_percent_b} (type: {type(min_bb_percent_b)})")
+        print(f"   max_bb_percent_b: {max_bb_percent_b} (type: {type(max_bb_percent_b)})")
+        
 
+        
+        # Debug logging before calling query_by_params
+        print(f"🚀 Calling query_by_params with:")
+        print(f"   min_change: {min_change}")
+        print(f"   max_change: {max_change}")
+        print(f"   min_rsi: {min_rsi}")
+        print(f"   max_rsi: {max_rsi}")
+        print(f"   min_bb_percent_b: {min_bb_percent_b}")
+        print(f"   max_bb_percent_b: {max_bb_percent_b}")
         
         # Call the existing query function
         results = query_by_params(
@@ -483,9 +748,14 @@ def api_query():
             min_price=min_price,
             min_relative_volume=min_relative_volume,
             min_change=min_change,
+            max_change=max_change,
             min_sma20_above_pct=min_sma20_above_pct,
             min_atr_pct=min_atr_pct,
             min_adr_pct=min_adr_pct,
+            min_rsi=min_rsi,
+            max_rsi=max_rsi,
+            min_bb_percent_b=min_bb_percent_b,
+            max_bb_percent_b=max_bb_percent_b,
             filter_out_otc=filter_out_otc,
             bullish_candlestick_patterns_only=bullish_candlestick_patterns_only
         )
@@ -746,13 +1016,7 @@ if __name__ == '__main__':
     print(f"USE_FILE_STORAGE: {os.getenv('USE_FILE_STORAGE', 'false')}")
     print("================================")
     
-    # Start the background price updater
-    print("🚀 Starting background price updater...")
-    start_price_updater()
-    
     try:
         app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
     except KeyboardInterrupt:
-        print("\n🛑 Stopping background price updater...")
-        stop_price_updater()
         print("✅ Application stopped")

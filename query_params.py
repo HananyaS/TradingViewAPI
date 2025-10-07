@@ -44,6 +44,13 @@ PARAMS = [
         postprocess=lambda v: None if v is None else v / 100,
     ),
     QueryParam(
+        name='max_change',
+        prompt="Max % change (e.g. 15 or '-'):",
+        parser=parse_optional_float,
+        default=Defaults.MAX_CHANGE,
+        postprocess=lambda v: None if v is None else v / 100,
+    ),
+    QueryParam(
         name='min_sma20_above_pct',
         prompt="Min SMA20/close ratio (e.g. 1.1 or '-'):",
         parser=parse_optional_float,
@@ -60,6 +67,30 @@ PARAMS = [
         prompt="Min ADR % (e.g. 3 or '-'):",
         parser=parse_optional_float,
         default=Defaults.MIN_ADR_PCT,
+    ),
+    QueryParam(
+        name='min_rsi',
+        prompt="Min RSI (e.g. 30 or '-'):",
+        parser=parse_optional_float,
+        default=Defaults.MIN_RSI,
+    ),
+    QueryParam(
+        name='max_rsi',
+        prompt="Max RSI (e.g. 70 or '-'):",
+        parser=parse_optional_float,
+        default=Defaults.MAX_RSI,
+    ),
+    QueryParam(
+        name='min_bb_percent_b',
+        prompt="Min BB %B (e.g. 0.2 or '-'):",
+        parser=parse_optional_float,
+        default=Defaults.MIN_BB_PERCENT_B,
+    ),
+    QueryParam(
+        name='max_bb_percent_b',
+        prompt="Max BB %B (e.g. 0.8 or '-'):",
+        parser=parse_optional_float,
+        default=Defaults.MAX_BB_PERCENT_B,
     ),
     QueryParam(
         name='filter_out_otc',
