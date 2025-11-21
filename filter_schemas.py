@@ -1,7 +1,7 @@
 """
 Pydantic schemas for dynamic filter validation and serialization
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Union, Any, Dict
 from enum import Enum
 
@@ -63,8 +63,9 @@ class FilterRule(BaseModel):
     right_operand: FilterOperand = Field(..., description="Right side of the comparison")
     enabled: bool = Field(True, description="Whether this rule is active")
     
-    @validator('operator')
-    def validate_operator_compatibility(cls, v, values):
+    @field_validator('operator')
+    @classmethod
+    def validate_operator_compatibility(cls, v):
         """Validate that operator is compatible with operand types"""
         # TODO: Add validation logic based on field types
         return v
@@ -77,9 +78,13 @@ class FilterGroup(BaseModel):
     rules: List[FilterRule] = Field(default_factory=list, description="Individual filter rules")
     nested_groups: List['FilterGroup'] = Field(default_factory=list, description="Nested filter groups")
     enabled: bool = Field(True, description="Whether this group is active")
+    
+    model_config = {
+        "arbitrary_types_allowed": True,
+    }
 
 
-# Enable forward references for nested groups
+# Enable forward references for nested groups (Pydantic v2)
 FilterGroup.model_rebuild()
 
 
@@ -91,8 +96,8 @@ class ScreenerRequest(BaseModel):
     sort_by: Optional[str] = Field("market_cap_basic", description="Field to sort by")
     sort_ascending: bool = Field(False, description="Sort direction")
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "filter_groups": [
                     {
@@ -124,6 +129,7 @@ class ScreenerRequest(BaseModel):
                 "sort_ascending": False
             }
         }
+    }
 
 
 class ScreenerResponse(BaseModel):
@@ -145,8 +151,9 @@ class FieldMetadata(BaseModel):
     Group_Name: str = Field(..., alias="Group Name", description="Field group/category")
     description: Optional[str] = Field(None, description="Field description (TODO)")
     
-    class Config:
-        allow_population_by_field_name = True
+    model_config = {
+        "populate_by_name": True,
+    }
 
 
 class FieldsMetadata(BaseModel):
