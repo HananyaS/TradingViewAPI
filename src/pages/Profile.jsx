@@ -143,7 +143,7 @@ const Profile = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Profile Card */}
         <Card className="lg:col-span-1">
           <div className="text-center">
@@ -219,7 +219,7 @@ const Profile = () => {
       </div>
 
       {/* Settings Sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Preferences
@@ -299,7 +299,7 @@ const Profile = () => {
               onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
               placeholder="Enter your name"
               required
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              className={`w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base sm:text-sm ${
                 theme === 'dark'
                   ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                   : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
@@ -316,7 +316,7 @@ const Profile = () => {
               value={editForm.picture}
               onChange={(e) => setEditForm({ ...editForm, picture: e.target.value })}
               placeholder="https://example.com/picture.jpg"
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              className={`w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base sm:text-sm ${
                 theme === 'dark'
                   ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                   : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
@@ -383,7 +383,7 @@ const Profile = () => {
               type="text"
               id="deleteConfirm"
               placeholder="DELETE"
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
+              className={`w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-base sm:text-sm ${
                 theme === 'dark'
                   ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                   : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'

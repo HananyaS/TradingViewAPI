@@ -164,44 +164,44 @@ const Home = () => {
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Enhanced Hero Section with Glassmorphism */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-purple-600 to-pink-500 rounded-3xl p-10 text-white shadow-2xl">
+      <div className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-purple-600 to-pink-500 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 lg:p-10 text-white shadow-2xl">
         {/* Animated Background Blobs */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-white opacity-10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 animate-pulse"></div>
-        <div className="absolute bottom-0 left-0 w-80 h-80 bg-white opacity-10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 animation-delay-400"></div>
+        <div className="absolute top-0 right-0 w-64 sm:w-96 h-64 sm:h-96 bg-white opacity-10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 animate-pulse"></div>
+        <div className="absolute bottom-0 left-0 w-56 sm:w-80 h-56 sm:h-80 bg-white opacity-10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 animation-delay-400"></div>
         
         <div className="relative z-10">
-          <div className="flex items-center justify-between flex-wrap gap-6">
-            <div className="flex-1">
-              <div className="flex items-center mb-3">
-                <div className="bg-white/20 backdrop-blur-sm p-3 rounded-2xl mr-4">
-                  <SparklesIcon className="h-10 w-10 text-white" />
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 sm:gap-6">
+            <div className="flex-1 w-full lg:w-auto">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center mb-3 sm:mb-4">
+                <div className="bg-white/20 backdrop-blur-sm p-2 sm:p-3 rounded-xl sm:rounded-2xl mr-3 sm:mr-4 mb-3 sm:mb-0">
+                  <SparklesIcon className="h-6 w-6 sm:h-8 sm:w-8 md:h-10 md:w-10 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-4xl font-extrabold mb-1 tracking-tight">
+                  <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold mb-1 tracking-tight">
                     Advanced Stock Screener
                   </h1>
-                  <p className="text-blue-100 text-lg font-medium">
+                  <p className="text-blue-100 text-sm sm:text-base md:text-lg font-medium">
                     Discover high-potential investment opportunities
                   </p>
                 </div>
               </div>
-              <p className="text-white/90 max-w-2xl leading-relaxed">
+              <p className="text-white/90 max-w-2xl leading-relaxed text-sm sm:text-base">
                 Build sophisticated filters with real-time market data. Save your strategies, track performance, and make data-driven decisions.
               </p>
             </div>
             
             {/* User Welcome Card */}
-            <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-xl">
-              <p className="text-sm text-blue-100 mb-1">Welcome back,</p>
-              <p className="text-2xl font-bold mb-3">{user?.name?.split(' ')[0] || 'Trader'}</p>
+            <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-xl w-full lg:w-auto">
+              <p className="text-xs sm:text-sm text-blue-100 mb-1">Welcome back,</p>
+              <p className="text-xl sm:text-2xl font-bold mb-3">{user?.name?.split(' ')[0] || 'Trader'}</p>
               <div className="flex items-center space-x-4 text-sm">
                 <div className="text-center">
-                  <div className="text-2xl font-bold">{savedQueries.length}</div>
+                  <div className="text-xl sm:text-2xl font-bold">{savedQueries.length}</div>
                   <div className="text-xs text-blue-100">Saved Strategies</div>
                 </div>
                 <div className="h-8 w-px bg-white/30"></div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold">{results.length}</div>
+                  <div className="text-xl sm:text-2xl font-bold">{results.length}</div>
                   <div className="text-xs text-blue-100">Results Found</div>
                 </div>
               </div>
@@ -211,7 +211,7 @@ const Home = () => {
       </div>
 
       {/* Quick Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
         {[
           { label: 'Active Strategies', value: filters.length, Icon: AdjustmentsHorizontalIcon, color: 'from-blue-500 to-cyan-500' },
           { label: 'Results Found', value: results.length, Icon: ChartBarIcon, color: 'from-purple-500 to-pink-500' },
@@ -232,9 +232,9 @@ const Home = () => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Sidebar - Saved Queries */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 order-2 lg:order-1">
           <SavedQueries
             queries={savedQueries}
             onLoad={loadQuery}
@@ -247,7 +247,7 @@ const Home = () => {
         </div>
 
           {/* Main Content */}
-          <div className="lg:col-span-3 space-y-6">
+          <div className="lg:col-span-3 space-y-4 sm:space-y-6 order-1 lg:order-2">
             {/* Enhanced Strategy Builder Card with Premium Design */}
             <Card className="border-2 border-transparent bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 dark:from-gray-800 dark:via-gray-800 dark:to-gray-900 shadow-xl">
               {/* Premium Header with Gradient Border */}
@@ -277,23 +277,24 @@ const Home = () => {
                   </div>
                   
                   {/* Action Buttons with Enhanced Design */}
-                  <div className="flex space-x-3">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
                     <Button
                       onClick={() => setShowLoadModal(true)}
                       variant="outline"
                       size="md"
-                      className="border-2 hover:border-blue-500 hover:text-blue-600 dark:hover:border-blue-400 transition-all duration-200"
-                      icon={<FolderOpenIcon className="h-5 w-5" />}
+                      className="border-2 hover:border-blue-500 hover:text-blue-600 dark:hover:border-blue-400 transition-all duration-200 text-sm sm:text-base"
+                      icon={<FolderOpenIcon className="h-4 w-4 sm:h-5 sm:w-5" />}
                     >
-                      Load
+                      <span className="hidden sm:inline">Load</span>
+                      <span className="sm:hidden">Load Strategy</span>
                     </Button>
                     <Button
                       onClick={() => setShowSaveModal(true)}
                       disabled={!filters.length}
                       variant="secondary"
                       size="md"
-                      className="shadow-lg hover:shadow-xl transition-all duration-200"
-                      icon={<BookmarkIcon className="h-5 w-5" />}
+                      className="shadow-lg hover:shadow-xl transition-all duration-200 text-sm sm:text-base"
+                      icon={<BookmarkIcon className="h-4 w-4 sm:h-5 sm:w-5" />}
                     >
                       Save
                     </Button>
@@ -303,8 +304,8 @@ const Home = () => {
                       loading={loading}
                       variant="primary"
                       size="md"
-                      className="shadow-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-200 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                      icon={!loading && <RocketLaunchIcon className="h-5 w-5" />}
+                      className="shadow-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-200 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-sm sm:text-base"
+                      icon={!loading && <RocketLaunchIcon className="h-4 w-4 sm:h-5 sm:w-5" />}
                     >
                       {loading ? 'Analyzing...' : 'Run Screener'}
                     </Button>

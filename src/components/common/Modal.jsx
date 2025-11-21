@@ -41,7 +41,7 @@ const Modal = ({
     md: 'max-w-2xl',
     lg: 'max-w-4xl',
     xl: 'max-w-6xl',
-    full: 'max-w-full mx-4'
+    full: 'max-w-full'
   };
 
   return (
@@ -53,32 +53,33 @@ const Modal = ({
       ></div>
 
       {/* Modal */}
-      <div className="flex items-center justify-center min-h-screen p-4">
+      <div className="flex items-center justify-center min-h-screen p-2 sm:p-4">
         <div 
-          className={`relative bg-white dark:bg-gray-800 rounded-lg shadow-xl ${sizes[size]} w-full animate-fade-in`}
+          className={`relative bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-xl ${sizes[size]} w-full max-h-[95vh] overflow-y-auto animate-fade-in mx-2 sm:mx-4`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
           {(title || showCloseButton) && (
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
               {title && (
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white pr-2">
                   {title}
                 </h3>
               )}
               {showCloseButton && (
                 <button
                   onClick={onClose}
-                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1 -mr-1"
+                  aria-label="Close modal"
                 >
-                  <XMarkIcon className="h-6 w-6" />
+                  <XMarkIcon className="h-5 w-5 sm:h-6 sm:w-6" />
                 </button>
               )}
             </div>
           )}
 
           {/* Content */}
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {children}
           </div>
         </div>

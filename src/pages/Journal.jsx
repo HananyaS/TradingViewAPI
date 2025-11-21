@@ -299,21 +299,22 @@ const Journal = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center">
-            <DocumentTextIcon className="h-8 w-8 mr-3 text-blue-600 dark:text-blue-400" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white flex items-center">
+            <DocumentTextIcon className="h-6 w-6 sm:h-8 sm:w-8 mr-2 sm:mr-3 text-blue-600 dark:text-blue-400" />
             Trading Journal
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">
+          <p className="text-gray-600 dark:text-gray-400 mt-1 sm:mt-2 text-sm sm:text-base">
             Track and analyze your trading performance
           </p>
         </div>
-        <div className="flex space-x-3">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
           {trades.length > 0 && (
             <Button
               onClick={() => setShowStatsModal(true)}
               variant="secondary"
+              className="w-full sm:w-auto"
             >
               View Stats
             </Button>
@@ -322,13 +323,14 @@ const Journal = () => {
             onClick={() => setShowAddModal(true)}
             variant="primary"
             icon={<PlusIcon className="h-5 w-5" />}
+            className="w-full sm:w-auto"
           >
             Add Trade
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <Card>
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Trades</div>
           <div className="text-3xl font-bold text-gray-900 dark:text-white">{trades.length}</div>
@@ -366,20 +368,21 @@ const Journal = () => {
         </Card>
       ) : (
         <Card padding="p-0">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-800">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Entry</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Exit</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Quantity</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">P&L</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <div className="inline-block min-w-full align-middle">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800">
+                  <tr>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell">Type</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Entry</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Exit</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">Quantity</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">P&L</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {trades.map((trade) => {
                   const pnl = calculatePnL(trade);
@@ -387,37 +390,38 @@ const Journal = () => {
                   
                   return (
                     <tr key={trade.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                        {trade.trade_date ? new Date(trade.trade_date).toLocaleDateString() : '--'}
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white">
+                        {trade.trade_date ? new Date(trade.trade_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: window.innerWidth >= 640 ? 'numeric' : '2-digit' }) : '--'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="font-semibold text-gray-900 dark:text-white">{trade.symbol}</span>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                        <span className="font-semibold text-gray-900 dark:text-white text-xs sm:text-sm">{trade.symbol}</span>
+                        <span className="sm:hidden ml-2 text-xs text-gray-500 dark:text-gray-400 capitalize">({trade.type || trade.direction || '—'})</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white capitalize">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white capitalize hidden sm:table-cell">
                         {trade.type || trade.direction || '—'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white">
                         {trade.entry_price ? `$${parseFloat(trade.entry_price).toFixed(2)}` : '--'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white">
                         {trade.exit_price ? (
                           `$${parseFloat(trade.exit_price).toFixed(2)}`
                         ) : priceLookup[trade.symbol]?.current !== undefined ? (
                           <span>
                             ${Number(priceLookup[trade.symbol].current).toFixed(2)}
-                            <span className="ml-2 text-xs text-blue-500">Live</span>
+                            <span className="ml-1 sm:ml-2 text-xs text-blue-500">Live</span>
                           </span>
                         ) : (
                           '--'
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white hidden md:table-cell">
                         {trade.quantity || '--'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                         {pnl !== null ? (
                           <div>
-                            <div className={`text-sm font-semibold ${pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            <div className={`text-xs sm:text-sm font-semibold ${pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                               {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
                             </div>
                             {pnlPercent !== null && (
@@ -427,26 +431,26 @@ const Journal = () => {
                             )}
                           </div>
                         ) : (
-                          <span className="text-sm text-gray-500">
-                            {priceLoading ? 'Updating...' : 'Waiting for price'}
+                          <span className="text-xs sm:text-sm text-gray-500">
+                            {priceLoading ? 'Updating...' : 'Waiting'}
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex items-center space-x-3">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm">
+                        <div className="flex items-center space-x-2 sm:space-x-3">
                           <button
                             onClick={() => startEditTrade(trade)}
-                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-1"
                             title="Edit trade"
                           >
-                            <PencilSquareIcon className="h-5 w-5" />
+                            <PencilSquareIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                           </button>
                           <button
                             onClick={() => deleteTrade(trade.id)}
-                            className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                            className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-1"
                             title="Delete trade"
                           >
-                            <TrashIcon className="h-5 w-5" />
+                            <TrashIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                           </button>
                         </div>
                       </td>
@@ -455,6 +459,7 @@ const Journal = () => {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </Card>
       )}
@@ -466,14 +471,14 @@ const Journal = () => {
         size="md"
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Symbol *</label>
               <input
                 type="text"
                 value={newTrade.symbol}
                 onChange={(e) => setNewTrade({ ...newTrade, symbol: e.target.value.toUpperCase() })}
-                className={`w-full px-3 py-2 border rounded-lg ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                className={`w-full px-3 py-2.5 border rounded-lg text-base ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
                 placeholder="AAPL"
               />
             </div>
@@ -483,12 +488,12 @@ const Journal = () => {
                 type="date"
                 value={newTrade.trade_date}
                 onChange={(e) => setNewTrade({ ...newTrade, trade_date: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                className={`w-full px-3 py-2.5 border rounded-lg text-base ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Entry Price *</label>
               <input
@@ -496,7 +501,7 @@ const Journal = () => {
                 step="0.01"
                 value={newTrade.entry_price}
                 onChange={(e) => setNewTrade({ ...newTrade, entry_price: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                className={`w-full px-3 py-2.5 border rounded-lg text-base ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
                 placeholder="0.00"
               />
             </div>
@@ -507,7 +512,7 @@ const Journal = () => {
                 step="0.01"
                 value={newTrade.exit_price}
                 onChange={(e) => setNewTrade({ ...newTrade, exit_price: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                className={`w-full px-3 py-2.5 border rounded-lg text-base ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
                 placeholder="0.00"
               />
             </div>
@@ -517,7 +522,7 @@ const Journal = () => {
                 type="number"
                 value={newTrade.quantity}
                 onChange={(e) => setNewTrade({ ...newTrade, quantity: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                className={`w-full px-3 py-2.5 border rounded-lg text-base ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
                 placeholder="100"
               />
             </div>
@@ -526,7 +531,7 @@ const Journal = () => {
               <select
                 value={newTrade.direction}
                 onChange={(e) => setNewTrade({ ...newTrade, direction: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                className={`w-full px-3 py-2.5 border rounded-lg text-base ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
               >
                 <option value="long">Long</option>
                 <option value="short">Short</option>
@@ -575,14 +580,14 @@ const Journal = () => {
           size="md"
         >
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Symbol *</label>
                 <input
                   type="text"
                   value={editingTrade.symbol}
                   onChange={(e) => updateEditingField('symbol', e.target.value.toUpperCase())}
-                  className={`w-full px-3 py-2 border rounded-lg ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                  className={`w-full px-3 py-2.5 border rounded-lg text-base ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
                 />
               </div>
               <div>
@@ -591,12 +596,12 @@ const Journal = () => {
                   type="date"
                   value={editingTrade.trade_date}
                   onChange={(e) => updateEditingField('trade_date', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-lg ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                  className={`w-full px-3 py-2.5 border rounded-lg text-base ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Entry Price *</label>
                 <input

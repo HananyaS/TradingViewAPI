@@ -765,13 +765,13 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
                           </button>
                         </div>
 
-                        {/* Rule Content */}
-                        <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-4">
-                          {/* Field Select */}
-                          <div className={isBooleanField(fieldName, fieldType) ? "md:col-span-6" : "md:col-span-4"}>
-                            <label className={`block text-xs font-semibold mb-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                              Field
-                            </label>
+                      {/* Rule Content */}
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 sm:gap-4">
+                        {/* Field Select */}
+                        <div className={isBooleanField(fieldName, fieldType) ? "lg:col-span-6 sm:col-span-2" : "lg:col-span-4 sm:col-span-2"}>
+                          <label className={`block text-xs font-semibold mb-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                            Field
+                          </label>
                             {renderFieldSelect(
                               rule.left_operand?.value || '',
                               (value) => {
@@ -790,12 +790,12 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
                             )}
                           </div>
 
-                          {/* Operator - Hidden for boolean fields */}
-                          {!(config.inputType === 'boolean' || isBooleanField(fieldName, fieldType)) && (
-                            <div className="md:col-span-2">
-                              <label className={`block text-xs font-semibold mb-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                                Operator
-                              </label>
+                        {/* Operator - Hidden for boolean fields */}
+                        {!(config.inputType === 'boolean' || isBooleanField(fieldName, fieldType)) && (
+                          <div className="lg:col-span-2 sm:col-span-1">
+                            <label className={`block text-xs font-semibold mb-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                              Operator
+                            </label>
                               {renderOperatorSelect(
                                 fieldType,
                                 rule.operator,
@@ -804,11 +804,11 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
                             </div>
                           )}
 
-                          {/* Value Input */}
-                          <div className={isBooleanField(fieldName, fieldType) ? "md:col-span-6" : "md:col-span-5"}>
-                            <label className={`block text-xs font-semibold mb-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                              Value
-                            </label>
+                        {/* Value Input */}
+                        <div className={isBooleanField(fieldName, fieldType) ? "lg:col-span-6 sm:col-span-2" : "lg:col-span-5 sm:col-span-1"}>
+                          <label className={`block text-xs font-semibold mb-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                            Value
+                          </label>
                             {renderValueInput(
                               rule,
                               field,
@@ -822,17 +822,17 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
                           </div>
 
                           {/* Remove Button */}
-                          <div className="md:col-span-1 flex items-end">
+                          <div className="lg:col-span-1 sm:col-span-2 flex items-center justify-start sm:justify-end pt-4 sm:pt-6">
                             <button
                               onClick={() => removeRule(groupIndex, ruleIndex)}
-                              className={`w-full p-2 rounded-lg transition-all duration-200 ${
+                              className={`p-2 sm:p-2.5 rounded-full transition-colors duration-200 touch-manipulation ${
                                 theme === 'dark'
                                   ? 'text-red-400 hover:bg-red-900/20'
                                   : 'text-red-600 hover:bg-red-50'
                               }`}
                               title="Remove Rule"
                             >
-                              <TrashIcon className="h-5 w-5 mx-auto" />
+                              <TrashIcon className="h-5 w-5" />
                             </button>
                           </div>
                         </div>
