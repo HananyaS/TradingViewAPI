@@ -27,24 +27,41 @@ except ImportError:
 except FileNotFoundError:
     print("⚠️ .env file not found. Run: python local_setup.py")
 
-# Allow OAuth2 to work with HTTP for local development
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+# Check if we're in production
+IS_PRODUCTION = os.getenv('FLASK_ENV') == 'production' or os.getenv('RENDER') == 'true' or os.path.exists('static/dist/index.html')
 
-app = Flask(__name__)
+# Allow OAuth2 to work with HTTP for local development only
+if not IS_PRODUCTION:
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+app = Flask(__name__, static_folder='static/dist' if IS_PRODUCTION else 'static')
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 
-# Configure CORS to allow credentials (cookies/session) from React dev server
-CORS(app, supports_credentials=True, origins=['http://localhost:5173', 'http://localhost:5173'])
+# Configure CORS
+if IS_PRODUCTION:
+    # Production: Allow requests from the Render domain
+    render_url = os.getenv('RENDER_EXTERNAL_URL', '')
+    CORS(app, supports_credentials=True, origins=[render_url] if render_url else None)
+else:
+    # Development: Allow requests from React dev server
+    CORS(app, supports_credentials=True, origins=['http://localhost:5173'])
 
-# Configure session cookie settings 
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Lax allows cookies in top-level navigation
-app.config['SESSION_COOKIE_SECURE'] = False  # Can be False for HTTP (localhost)
-app.config['SESSION_COOKIE_HTTPONLY'] = False  # Allow JavaScript access for debugging (TEMP - change to True in production)
-app.config['SESSION_COOKIE_DOMAIN'] = 'localhost'  # Explicitly set to 'localhost' (works for both localhost:5000 and localhost:5173, but NOT 127.0.0.1)
-app.config['SESSION_COOKIE_PATH'] = '/'  # Make cookie available for all paths
-app.config['SESSION_COOKIE_NAME'] = 'session'  # Session cookie name
-app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours in seconds
-app.config['SESSION_REFRESH_EACH_REQUEST'] = False  # Don't regenerate session on each request
+# Configure session cookie settings
+if IS_PRODUCTION:
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SECURE'] = True  # HTTPS in production
+    app.config['SESSION_COOKIE_HTTPONLY'] = True  # Secure in production
+    app.config['SESSION_COOKIE_DOMAIN'] = None  # Let Flask determine domain
+else:
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SECURE'] = False  # HTTP for localhost
+    app.config['SESSION_COOKIE_HTTPONLY'] = False  # Allow JS access for debugging
+    app.config['SESSION_COOKIE_DOMAIN'] = 'localhost'
+
+app.config['SESSION_COOKIE_PATH'] = '/'
+app.config['SESSION_COOKIE_NAME'] = 'session'
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
+app.config['SESSION_REFRESH_EACH_REQUEST'] = False
 
 # Initialize filter serializer with field metadata
 _filter_serializer = None
@@ -140,18 +157,39 @@ def test_filter():
             'message': f'Test filter failed: {str(e)}'
         }), 500
 
+def get_frontend_url():
+    """Get frontend URL based on environment"""
+    if IS_PRODUCTION:
+        render_url = os.getenv('RENDER_EXTERNAL_URL', '')
+        return render_url if render_url else request.url_root.rstrip('/')
+    else:
+        return 'http://localhost:5173'
+
 @app.route('/login')
 def login():
     """Initiate Google OAuth login"""
     try:
-        flow = create_oauth_flow()
+        # Determine redirect URI for OAuth
+        if IS_PRODUCTION:
+            render_url = os.getenv('RENDER_EXTERNAL_URL', '')
+            if render_url:
+                redirect_uri = f"{render_url}/oauth2callback"
+            else:
+                # Construct from request
+                redirect_uri = f"{request.scheme}://{request.host}/oauth2callback"
+                redirect_uri = redirect_uri
+        else:
+            redirect_uri = None  # Use default from google_oauth.py
+        
+        flow = create_oauth_flow(redirect_uri)
         authorization_url, state = flow.authorization_url()
         session['state'] = state
         print(f"Redirecting to: {authorization_url}")
         return redirect(authorization_url)
     except Exception as e:
         print(f"Login error: {e}")
-        return redirect(f'http://localhost:5173/login?error=Login+error:+{str(e)}')
+        frontend_url = get_frontend_url()
+        return redirect(f'{frontend_url}/login?error=Login+error:+{str(e)}')
 
 @app.route('/oauth2callback')
 def oauth2callback():
@@ -163,7 +201,17 @@ def oauth2callback():
         print(f"Request args: {request.args}")
         print("=====================\n")
         
-        flow = create_oauth_flow()
+        # Determine redirect URI for OAuth callback
+        if IS_PRODUCTION:
+            render_url = os.getenv('RENDER_EXTERNAL_URL', '')
+            if render_url:
+                redirect_uri = f"{render_url}/oauth2callback"
+            else:
+                redirect_uri = f"{request.scheme}://{request.host}/oauth2callback"
+        else:
+            redirect_uri = None  # Use default
+        
+        flow = create_oauth_flow(redirect_uri)
         flow.fetch_token(authorization_response=request.url)
         
         print(f"✅ Successfully fetched token from Google")
@@ -211,10 +259,12 @@ def oauth2callback():
             print("=====================\n")
             
             # Redirect to React with token in URL (React will capture and store it)
-            return redirect(f'http://localhost:5173/?auth_token={token}')
+            frontend_url = get_frontend_url()
+            return redirect(f'{frontend_url}/?auth_token={token}')
         else:
             print("Invalid Google token")
-            return redirect('http://localhost:5173/login?error=Invalid+Google+token')
+            frontend_url = get_frontend_url()
+            return redirect(f'{frontend_url}/login?error=Invalid+Google+token')
             
     except Exception as e:
         error_msg = f'OAuth Error: {str(e)}'
@@ -222,7 +272,8 @@ def oauth2callback():
         import traceback
         traceback.print_exc()
         print("=====================\n")
-        return redirect(f'http://localhost:5173/login?error={error_msg}')
+        frontend_url = get_frontend_url()
+        return redirect(f'{frontend_url}/login?error={error_msg}')
 
 @app.route('/logout', methods=['POST'])
 def logout():

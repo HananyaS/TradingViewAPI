@@ -9,13 +9,30 @@ from auth_tokens import verify_token
 # Google OAuth configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5173/oauth2callback')
+
+# Determine redirect URI based on environment
+IS_PRODUCTION = os.getenv('FLASK_ENV') == 'production' or os.getenv('RENDER') == 'true'
+if IS_PRODUCTION:
+    # Production: Use Render URL or custom domain
+    RENDER_URL = os.getenv('RENDER_EXTERNAL_URL', '')
+    if RENDER_URL:
+        GOOGLE_REDIRECT_URI = f"{RENDER_URL}/oauth2callback"
+    else:
+        # Fallback: construct from request (will be set dynamically)
+        GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', '')
+else:
+    # Development: Use localhost
+    GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/oauth2callback')
 
 # OAuth flow configuration
 SCOPES = ['openid', 'https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile']
 
-def create_oauth_flow():
+def create_oauth_flow(redirect_uri=None):
     """Create OAuth flow for Google authentication"""
+    # Use provided redirect_uri or default
+    if redirect_uri is None:
+        redirect_uri = GOOGLE_REDIRECT_URI
+    
     # Create client config dictionary
     client_config = {
         "web": {
@@ -23,7 +40,7 @@ def create_oauth_flow():
             "client_secret": GOOGLE_CLIENT_SECRET,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [GOOGLE_REDIRECT_URI]
+            "redirect_uris": [redirect_uri]
         }
     }
     
@@ -34,7 +51,7 @@ def create_oauth_flow():
     )
     
     # Set the redirect URI explicitly
-    flow.redirect_uri = GOOGLE_REDIRECT_URI
+    flow.redirect_uri = redirect_uri
     
     return flow
 
