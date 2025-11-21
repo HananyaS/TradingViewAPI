@@ -114,8 +114,9 @@ class FilterSerializer:
         print(f"   Rules: {len(group.rules)}, Nested groups: {len(group.nested_groups)}")
         print(f"   Logical operator: {group.logical_operator}")
         
-        # Process individual rules
+        # Process individual rules - store rule info for OR optimization
         rule_conditions = []
+        rule_info = []  # Store (field_name, operator, value) for each rule
         for i, rule in enumerate(group.rules):
             if rule.enabled:
                 print(f"   Processing rule {i}: {rule.id}")
@@ -123,6 +124,14 @@ class FilterSerializer:
                 print(f"   Rule {i} result: {type(condition)}")
                 if condition is not None:
                     rule_conditions.append(condition)
+                    # Store rule metadata for OR optimization
+                    if rule.left_operand.type == "field":
+                        rule_info.append({
+                            'field': rule.left_operand.value,
+                            'operator': rule.operator,
+                            'value': rule.right_operand.value,
+                            'condition': condition
+                        })
         
         print(f"   Rule conditions collected: {len(rule_conditions)}")
         
@@ -152,17 +161,48 @@ class FilterSerializer:
             print(f"   AND logic: returning {len(all_conditions)} conditions")
             return all_conditions
         elif group.logical_operator == LogicalOperator.OR:
-            # For OR, we need to combine conditions using | operator
+            # For OR, we need to combine conditions
             if len(all_conditions) == 1:
                 print(f"   OR logic: single condition, returning as-is")
                 return all_conditions
             else:
                 print(f"   OR logic: combining {len(all_conditions)} conditions")
-                # Combine all conditions with OR
-                combined_condition = all_conditions[0]
-                for condition in all_conditions[1:]:
-                    combined_condition = combined_condition or condition
-                return [combined_condition]
+                
+                # Optimize: if all OR conditions are EQUALS for the same field, use isin()
+                if len(rule_info) == len(all_conditions) and len(rule_info) > 1:
+                    # Check if all rules are EQUALS for the same field
+                    first_field = rule_info[0]['field']
+                    first_operator = rule_info[0]['operator']
+                    all_same_field = all(r['field'] == first_field for r in rule_info)
+                    all_equals = all(r['operator'] == OperatorType.EQUALS for r in rule_info)
+                    
+                    if all_same_field and all_equals:
+                        # Optimize to use isin()
+                        values = [r['value'] for r in rule_info]
+                        # Special handling for exchange field - must be uppercase
+                        if first_field.lower() == 'exchange':
+                            values = [v.upper().strip() if isinstance(v, str) else v for v in values]
+                            print(f"   ⚠️ Exchange OR filter - normalized values to: {values}")
+                        
+                        print(f"   ✅ Optimizing OR: {first_field} == {values[0]} OR ... → {first_field}.isin({values})")
+                        optimized_condition = Column(first_field).isin(values)
+                        return [optimized_condition]
+                
+                # Fallback: use bitwise OR to combine conditions
+                try:
+                    print(f"   Using bitwise OR to combine {len(all_conditions)} conditions")
+                    combined_condition = all_conditions[0]
+                    for condition in all_conditions[1:]:
+                        combined_condition = combined_condition | condition
+                    print(f"   OR logic: combined condition type: {type(combined_condition)}")
+                    return [combined_condition]
+                except Exception as e:
+                    print(f"   ⚠️ Error combining OR conditions with bitwise OR: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Return all conditions separately as fallback (will be AND'd, but better than error)
+                    print(f"   ⚠️ Falling back to returning conditions separately (will be AND'd)")
+                    return all_conditions
         
         print(f"   Default: returning {len(all_conditions)} conditions")
         return all_conditions

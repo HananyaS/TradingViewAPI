@@ -4,8 +4,19 @@ const EXCHANGE_OPTIONS = [
   'NYSE AMERICAN',
   'NYSE ARCA',
   'CBOE',
+  'CBOE BZX',
+  'CBOE BYX',
+  'CBOE EDGX',
+  'CBOE EDGA',
   'IEX',
-  'OTC'
+  'OTC',
+  'OTC MARKETS',
+  'PHILADELPHIA STOCK EXCHANGE',
+  'NYSE CHICAGO',
+  'NATIONAL STOCK EXCHANGE',
+  'NASDAQ BX',
+  'BATS',
+  'INSTINET'
 ];
 
 const SECTOR_OPTIONS = [
@@ -38,13 +49,18 @@ const COUNTRY_OPTIONS = [
 const DEFAULT_FIELD_BEHAVIOR = {
   number: {
     inputType: 'number',
-    step: 0.01
+    step: 0.01,
+    useSlider: false
   },
   string: {
     inputType: 'text'
   },
   enum: {
     inputType: 'enum'
+  },
+  boolean: {
+    inputType: 'checkbox',
+    options: [true, false]
   }
 };
 
@@ -61,52 +77,11 @@ const FIELD_DICTIONARY = {
     step: 0.01,
     placeholder: 'Price in USD'
   },
-  change: {
-    inputType: 'percent',
-    min: -50,
-    max: 50,
-    step: 0.1,
-    placeholder: 'Change %'
-  },
-  gap: {
-    inputType: 'percent',
-    min: -25,
-    max: 25,
-    step: 0.1,
-    placeholder: 'Gap %'
-  },
-  relative_volume: {
-    inputType: 'number',
-    min: 0,
-    step: 0.1,
-    placeholder: 'Relative volume'
-  },
   volume: {
     inputType: 'number',
     min: 0,
     step: 1000,
     placeholder: 'Volume'
-  },
-  RSI: {
-    inputType: 'number',
-    min: 0,
-    max: 100,
-    step: 1,
-    placeholder: 'RSI value'
-  },
-  'RSI[1]': {
-    inputType: 'number',
-    min: 0,
-    max: 100,
-    step: 1,
-    placeholder: 'Previous RSI value'
-  },
-  ADR: {
-    inputType: 'percent',
-    min: 0,
-    max: 50,
-    step: 0.1,
-    placeholder: 'ADR %'
   },
   ATR: {
     inputType: 'number',
@@ -131,6 +106,94 @@ const FIELD_DICTIONARY = {
     options: COUNTRY_OPTIONS,
     multi: true,
     placeholder: 'Select country'
+  },
+  industry: {
+    inputType: 'enum',
+    options: [], // Industry values are dynamic - will be populated from API if available
+    multi: true,
+    placeholder: 'Select industry'
+  },
+  // Candlestick patterns (boolean fields - 0 or 1)
+  'Candle.Hammer': {
+    inputType: 'boolean',
+    placeholder: 'Has Hammer pattern'
+  },
+  'Candle.Engulfing.Bullish': {
+    inputType: 'boolean',
+    placeholder: 'Has Bullish Engulfing pattern'
+  },
+  'Candle.Engulfing.Bearish': {
+    inputType: 'boolean',
+    placeholder: 'Has Bearish Engulfing pattern'
+  },
+  'Candle.Doji': {
+    inputType: 'boolean',
+    placeholder: 'Has Doji pattern'
+  },
+  'Candle.Marubozu.White': {
+    inputType: 'boolean',
+    placeholder: 'Has White Marubozu pattern'
+  },
+  'Candle.Marubozu.Black': {
+    inputType: 'boolean',
+    placeholder: 'Has Black Marubozu pattern'
+  },
+  'Candle.DragonFly.Doji': {
+    inputType: 'boolean',
+    placeholder: 'Has Dragonfly Doji pattern'
+  },
+  'Candle.GraveStone.Doji': {
+    inputType: 'boolean',
+    placeholder: 'Has Gravestone Doji pattern'
+  },
+  // Enhanced numeric fields with sliders
+  RSI: {
+    inputType: 'number',
+    min: 0,
+    max: 100,
+    step: 1,
+    useSlider: true,
+    placeholder: 'RSI value (0-100)'
+  },
+  'RSI[1]': {
+    inputType: 'number',
+    min: 0,
+    max: 100,
+    step: 1,
+    useSlider: true,
+    placeholder: 'Previous RSI value (0-100)'
+  },
+  change: {
+    inputType: 'percent',
+    min: -100,
+    max: 100,
+    step: 0.1,
+    useSlider: true,
+    placeholder: 'Change %'
+  },
+  gap: {
+    inputType: 'percent',
+    min: -50,
+    max: 50,
+    step: 0.1,
+    useSlider: true,
+    placeholder: 'Gap %'
+  },
+  ADR: {
+    inputType: 'percent',
+    min: 0,
+    max: 50,
+    step: 0.1,
+    useSlider: true,
+    placeholder: 'ADR %'
+  },
+  relative_volume: {
+    inputType: 'number',
+    min: 0,
+    max: 10,
+    step: 0.1,
+    useSlider: true,
+    placeholder: 'Relative volume'
   }
 };
 
@@ -177,7 +240,31 @@ export const getFieldConfig = (fieldName, fallbackType = 'number') => {
     return dictionaryEntry;
   }
 
+  // Check if it's a candlestick pattern (boolean)
+  if (fieldName && fieldName.startsWith('Candle.')) {
+    return {
+      inputType: 'boolean',
+      placeholder: `Has ${fieldName.replace('Candle.', '').replace('.', ' ')} pattern`
+    };
+  }
+
   return DEFAULT_FIELD_BEHAVIOR[fallbackType] || DEFAULT_FIELD_BEHAVIOR.number;
+};
+
+// Get enum values for a field (if available)
+export const getEnumValues = (fieldName) => {
+  const config = getFieldConfig(fieldName);
+  if (config.inputType === 'enum' && config.options) {
+    return config.options;
+  }
+  return null;
+};
+
+// Check if field is boolean
+export const isBooleanField = (fieldName, fieldType) => {
+  const config = getFieldConfig(fieldName, fieldType);
+  return config.inputType === 'boolean' || 
+         (fieldName && fieldName.startsWith('Candle.'));
 };
 
 export const getOperatorOptions = (fieldType) => {
