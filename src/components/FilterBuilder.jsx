@@ -530,9 +530,9 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
   const totalRules = filters.reduce((sum, group) => sum + group.rules.length, 0);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 sm:space-y-6 animate-fade-in w-full max-w-full overflow-hidden">
       {/* Header Stats */}
-      <div className={`flex items-center justify-between p-4 rounded-2xl ${
+      <div className={`flex items-center justify-between p-3 sm:p-4 rounded-2xl ${
         theme === 'dark' 
           ? 'bg-gradient-to-r from-gray-800/50 to-gray-900/50 border border-gray-700' 
           : 'bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-100'
@@ -564,7 +564,7 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
         return (
           <div
             key={group.id}
-            className={`group relative overflow-hidden rounded-2xl border-2 transition-all duration-300 ${
+            className={`group relative overflow-hidden rounded-2xl border-2 transition-all duration-300 w-full max-w-full ${
               theme === 'dark'
                 ? isEnabled
                   ? 'bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700 shadow-xl shadow-gray-900/50'
@@ -576,7 +576,7 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
           >
             {/* Group Header */}
             <div 
-              className={`flex items-center justify-between p-5 cursor-pointer transition-all duration-200 ${
+              className={`flex items-center justify-between p-3 sm:p-4 md:p-5 cursor-pointer transition-all duration-200 ${
                 theme === 'dark' 
                   ? 'hover:bg-gray-800/50' 
                   : 'hover:bg-gray-50'
@@ -686,7 +686,7 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
             </div>
 
             {/* Logical Operator Selector */}
-            <div className={`px-5 pb-3 border-b ${
+            <div className={`px-3 sm:px-4 md:px-5 pb-3 border-b ${
               theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
             }`}>
               <div className="flex items-center space-x-3">
@@ -718,9 +718,9 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
               </div>
             </div>
 
-            {/* Rules */}
-            {isExpanded && (
-              <div className="p-5 space-y-4 animate-slide-down">
+          {/* Rules */}
+          {isExpanded && (
+            <div className="p-3 sm:p-4 md:p-5 space-y-3 sm:space-y-4 animate-slide-down overflow-x-hidden">
                 {group.rules.map((rule, ruleIndex) => {
                   const field = fieldMetadata?.fields.find(f => f.Name === rule.left_operand.value);
                   const fieldType = field?.Type || 'number';
@@ -731,7 +731,7 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
                   return (
                     <div
                       key={rule.id}
-                      className={`relative p-4 rounded-xl border-2 transition-all duration-200 ${
+                      className={`relative p-3 sm:p-4 rounded-xl border-2 transition-all duration-200 w-full max-w-full overflow-hidden ${
                         theme === 'dark'
                           ? ruleEnabled
                             ? 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
@@ -766,7 +766,7 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
                         </div>
 
                       {/* Rule Content */}
-                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 sm:gap-4">
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 sm:gap-3 md:gap-4 w-full max-w-full">
                         {/* Field Select */}
                         <div className={isBooleanField(fieldName, fieldType) ? "lg:col-span-6 sm:col-span-2" : "lg:col-span-4 sm:col-span-2"}>
                           <label className={`block text-xs font-semibold mb-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -849,7 +849,7 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
       {/* Add Group Button */}
       <button
         onClick={addGroup}
-        className={`w-full group relative overflow-hidden px-6 py-4 border-2 border-dashed rounded-2xl transition-all duration-300 ${
+        className={`w-full max-w-full group relative overflow-hidden px-4 sm:px-6 py-3 sm:py-4 border-2 border-dashed rounded-2xl transition-all duration-300 ${
           theme === 'dark'
             ? 'border-gray-700 bg-gray-900/30 hover:border-blue-600 hover:bg-blue-900/10'
             : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'

@@ -368,19 +368,19 @@ const Journal = () => {
         </Card>
       ) : (
         <Card padding="p-0">
-          <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <div className="overflow-x-auto w-full">
             <div className="inline-block min-w-full align-middle">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 w-full">
                 <thead className="bg-gray-50 dark:bg-gray-800">
                   <tr>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell">Type</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Entry</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Exit</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">Quantity</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">P&L</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                    <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Date</th>
+                    <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Symbol</th>
+                    <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell whitespace-nowrap">Type</th>
+                    <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Entry</th>
+                    <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Exit</th>
+                    <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell whitespace-nowrap">Qty</th>
+                    <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">P&L</th>
+                    <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -390,35 +390,35 @@ const Journal = () => {
                   
                   return (
                     <tr key={trade.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white">
+                      <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white">
                         {trade.trade_date ? new Date(trade.trade_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: window.innerWidth >= 640 ? 'numeric' : '2-digit' }) : '--'}
                       </td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                      <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap">
                         <span className="font-semibold text-gray-900 dark:text-white text-xs sm:text-sm">{trade.symbol}</span>
-                        <span className="sm:hidden ml-2 text-xs text-gray-500 dark:text-gray-400 capitalize">({trade.type || trade.direction || '—'})</span>
+                        <span className="sm:hidden ml-1 text-xs text-gray-500 dark:text-gray-400 capitalize">({trade.type || trade.direction || '—'})</span>
                       </td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white capitalize hidden sm:table-cell">
+                      <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white capitalize hidden sm:table-cell">
                         {trade.type || trade.direction || '—'}
                       </td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white">
+                      <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white">
                         {trade.entry_price ? `$${parseFloat(trade.entry_price).toFixed(2)}` : '--'}
                       </td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white">
+                      <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white">
                         {trade.exit_price ? (
                           `$${parseFloat(trade.exit_price).toFixed(2)}`
                         ) : priceLookup[trade.symbol]?.current !== undefined ? (
                           <span>
                             ${Number(priceLookup[trade.symbol].current).toFixed(2)}
-                            <span className="ml-1 sm:ml-2 text-xs text-blue-500">Live</span>
+                            <span className="ml-1 text-xs text-blue-500">Live</span>
                           </span>
                         ) : (
                           '--'
                         )}
                       </td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white hidden md:table-cell">
+                      <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white hidden md:table-cell">
                         {trade.quantity || '--'}
                       </td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                      <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap">
                         {pnl !== null ? (
                           <div>
                             <div className={`text-xs sm:text-sm font-semibold ${pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -436,7 +436,7 @@ const Journal = () => {
                           </span>
                         )}
                       </td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm">
+                      <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm">
                         <div className="flex items-center space-x-2 sm:space-x-3">
                           <button
                             onClick={() => startEditTrade(trade)}
