@@ -7,21 +7,58 @@ def register_react_routes(app):
     
     if is_production:
         # Production: Serve built React app
+        # IMPORTANT: More specific routes must be registered BEFORE catch-all routes
+        
+        # Serve static assets from React build (Vite puts them in /assets/)
+        @app.route('/assets/<path:filename>')
+        def serve_react_assets(filename):
+            """Serve static assets from React build"""
+            try:
+                return send_from_directory('static/dist/assets', filename)
+            except Exception as e:
+                print(f"Error serving asset {filename}: {e}")
+                # Try to find the file in the dist root as fallback
+                try:
+                    return send_from_directory('static/dist', filename)
+                except:
+                    return "Asset not found", 404
+        
+        # Serve static files from dist root (for any other static files)
+        @app.route('/static/dist/<path:filename>')
+        def serve_static_assets(filename):
+            """Serve static assets from React build"""
+            return send_from_directory('static/dist', filename)
+        
+        # Serve favicon
+        @app.route('/favicon.ico')
+        def favicon():
+            if os.path.exists('static/dist/favicon.ico'):
+                return send_from_directory('static/dist', 'favicon.ico', mimetype='image/x-icon')
+            return send_file('favicon.ico', mimetype='image/x-icon')
+        
+        # Serve logo
+        @app.route('/trv_api_logo.svg')
+        def logo():
+            return send_file('trv_api_logo.svg', mimetype='image/svg+xml')
+        
+        # Serve index.html for SPA routes (catch-all, must be LAST)
         @app.route('/', defaults={'path': ''})
         @app.route('/<path:path>')
         def serve_react_app(path):
             """Serve React app for all routes (SPA routing)"""
-            # Don't serve API routes, static assets, or auth routes through this
+            # Don't serve API routes or auth routes through this
             if (path.startswith('api/') or 
-                path.startswith('static/') or 
                 path.startswith('login') or 
                 path.startswith('oauth2callback') or 
-                path.startswith('logout') or
-                path.startswith('favicon.ico') or
-                path.endswith('.svg') or
-                path.endswith('.ico')):
-                # Let Flask handle these routes - return None to continue routing
-                return None
+                path.startswith('logout')):
+                # These should be handled by Flask API routes, return 404 if not found
+                from flask import abort
+                abort(404)
+            
+            # Don't serve static assets here (handled by routes above)
+            if path.startswith('assets/') or path.startswith('static/'):
+                from flask import abort
+                abort(404)
             
             # Serve index.html for all other routes (React Router will handle routing)
             try:
@@ -31,21 +68,6 @@ def register_react_routes(app):
                 print(f"Error serving React app: {e}")
                 return "React app not built. Run 'npm run build' first.", 404
         
-        # Serve static assets from the build
-        @app.route('/static/dist/<path:filename>')
-        def serve_static_assets(filename):
-            """Serve static assets from React build"""
-            return send_from_directory('static/dist', filename)
-        
-        @app.route('/favicon.ico')
-        def favicon():
-            if os.path.exists('static/dist/favicon.ico'):
-                return send_from_directory('static/dist', 'favicon.ico', mimetype='image/x-icon')
-            return send_file('favicon.ico', mimetype='image/x-icon')
-        
-        @app.route('/trv_api_logo.svg')
-        def logo():
-            return send_file('trv_api_logo.svg', mimetype='image/svg+xml')
     else:
         # Development: Redirect to React dev server
         @app.route('/')
