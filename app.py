@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, render_template, session, redirect, url_for
+from flask import Flask, request, jsonify, send_file, session, redirect
 from flask_cors import CORS
 import io
 import json
@@ -6,13 +6,16 @@ from datetime import datetime
 import pandas as pd
 import math
 import urllib.parse
-from run_query import query_by_params
+from bson import ObjectId
+from screener_service import query_by_params, fetch_symbol_quotes
 from mongodb_config import mongodb_manager
 from google_oauth import create_oauth_flow, login_required, get_user_info, verify_google_token
+from auth_tokens import generate_token, verify_token, revoke_token
 from filter_schemas import ScreenerRequest, ScreenerResponse, FieldsMetadata, FieldMetadata
 from filter_serializer import FilterSerializer
 from pydantic import ValidationError
 import os
+from react_routes import register_react_routes
 
 # Load environment variables from .env file for local development
 try:
@@ -29,10 +32,24 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
-CORS(app)
+
+# Configure CORS to allow credentials (cookies/session) from React dev server
+CORS(app, supports_credentials=True, origins=['http://localhost:5173', 'http://localhost:5173'])
+
+# Configure session cookie settings 
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Lax allows cookies in top-level navigation
+app.config['SESSION_COOKIE_SECURE'] = False  # Can be False for HTTP (localhost)
+app.config['SESSION_COOKIE_HTTPONLY'] = False  # Allow JavaScript access for debugging (TEMP - change to True in production)
+app.config['SESSION_COOKIE_DOMAIN'] = 'localhost'  # Explicitly set to 'localhost' (works for both localhost:5000 and localhost:5173, but NOT 127.0.0.1)
+app.config['SESSION_COOKIE_PATH'] = '/'  # Make cookie available for all paths
+app.config['SESSION_COOKIE_NAME'] = 'session'  # Session cookie name
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours in seconds
+app.config['SESSION_REFRESH_EACH_REQUEST'] = False  # Don't regenerate session on each request
 
 # Initialize filter serializer with field metadata
 _filter_serializer = None
+
+register_react_routes(app)
 
 def get_filter_serializer():
     """Get or create the filter serializer with field metadata"""
@@ -53,22 +70,6 @@ def get_filter_serializer():
             _filter_serializer = FilterSerializer({})
     
     return _filter_serializer
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/journal')
-def journal():
-    return render_template('journal.html')
-
-@app.route('/watchlist')
-def watchlist():
-    return render_template('watchlist.html')
-
-@app.route('/filter-builder')
-def filter_builder():
-    return render_template('filter_builder.html')
 
 @app.route('/api/test-filter', methods=['POST'])
 def test_filter():
@@ -150,63 +151,258 @@ def login():
         return redirect(authorization_url)
     except Exception as e:
         print(f"Login error: {e}")
-        return redirect(url_for('index', error=f'Login error: {str(e)}'))
+        return redirect(f'http://localhost:5173/login?error=Login+error:+{str(e)}')
 
 @app.route('/oauth2callback')
 def oauth2callback():
     """Handle Google OAuth callback"""
     try:
+        print(f"\n=== OAuth Callback ===")
+        print(f"Request URL: {request.url}")
+        print(f"Request Host header: {request.headers.get('Host', 'NOT SET')}")
+        print(f"Request args: {request.args}")
+        print("=====================\n")
+        
         flow = create_oauth_flow()
         flow.fetch_token(authorization_response=request.url)
         
+        print(f"✅ Successfully fetched token from Google")
+        
         # Get user info from Google
         credentials = flow.credentials
+        print(f"ID Token exists: {credentials.id_token is not None}")
+        
         id_info = verify_google_token(credentials.id_token)
         
         if id_info:
+            # Record or get user (tracks first login date)
+            user_profile = mongodb_manager.get_or_create_user(
+                user_id=id_info['user_id'],
+                email=id_info['email'],
+                name=id_info['name'],
+                picture=id_info.get('picture', '')
+            )
+            
             # Store user info in session
+            session.clear()  # Clear any old session data first
             session['user_id'] = id_info['user_id']
             session['email'] = id_info['email']
             session['name'] = id_info['name']
             session['picture'] = id_info['picture']
             session['authenticated'] = True
+            session.permanent = True  # Make session persistent
+            session.modified = True  # Force session to be saved
             
+            print(f"\n=== OAuth Success ===")
             print(f"User authenticated: {id_info['email']}")
-            return redirect(url_for('index'))
+            if user_profile:
+                print(f"First login date: {user_profile.get('first_login_date')}")
+            
+            # Generate authentication token (bypasses cookie issues!)
+            token = generate_token({
+                'user_id': id_info['user_id'],
+                'email': id_info['email'],
+                'name': id_info['name'],
+                'picture': id_info['picture']
+            })
+            
+            print(f"Generated auth token: {token[:20]}...")
+            print(f"Redirecting to React app with token...")
+            print("=====================\n")
+            
+            # Redirect to React with token in URL (React will capture and store it)
+            return redirect(f'http://localhost:5173/?auth_token={token}')
         else:
             print("Invalid Google token")
-            return redirect(url_for('index', error='Invalid Google token. Please try again.'))
+            return redirect('http://localhost:5173/login?error=Invalid+Google+token')
             
     except Exception as e:
         error_msg = f'OAuth Error: {str(e)}'
-        print(f"OAuth Error: {e}")
-        return redirect(url_for('index', error=error_msg))
+        print(f"\n❌ OAuth Error: {e}")
+        import traceback
+        traceback.print_exc()
+        print("=====================\n")
+        return redirect(f'http://localhost:5173/login?error={error_msg}')
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 def logout():
-    """Logout user"""
+    """Logout user (revoke token)"""
+    # Get token from Authorization header
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:]
+        revoke_token(token)
+        print(f"🔓 Token revoked")
+    
     session.clear()
-    return redirect(url_for('index'))
+    return jsonify({'success': True, 'message': 'Logged out'})
 
 @app.route('/api/user')
 def get_user():
-    """Get current user information"""
-    user_info = get_user_info()
-    if user_info:
+    """Get current user information (token-based auth)"""
+    # Check for Authorization header with token
+    auth_header = request.headers.get('Authorization', '')
+    token = None
+    
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:]  # Remove 'Bearer ' prefix
+    
+    print("\n=== /api/user request ===")
+    print(f"Authorization header present: {bool(auth_header)}")
+    print(f"Token: {token[:20] + '...' if token else 'None'}")
+    
+    # Verify token
+    user_data = verify_token(token)
+    
+    if user_data:
+        print(f"✅ Token valid! User: {user_data.get('email')}")
+        print("========================\n")
         return jsonify({
             'authenticated': True,
-            'user_id': user_info['user_id'],
-            'email': user_info['email'],
-            'name': user_info['name'],
-            'picture': user_info['picture']
+            'user_id': user_data['user_id'],
+            'email': user_data['email'],
+            'name': user_data['name'],
+            'picture': user_data['picture']
         })
-    return jsonify({'authenticated': False})
+    else:
+        print(f"❌ No valid token")
+        print("========================\n")
+        return jsonify({'authenticated': False})
+
+@app.route('/api/profile', methods=['GET'])
+@login_required
+def get_user_profile():
+    """Get user profile with member since date"""
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
+    try:
+        profile = mongodb_manager.get_user_profile(user_id)
+        if profile:
+            return jsonify({
+                'success': True,
+                'profile': profile
+            })
+        else:
+            # Return basic info if profile doesn't exist yet
+            return jsonify({
+                'success': True,
+                'profile': {
+                    'user_id': user_id,
+                    'email': user_info.get('email'),
+                    'name': user_info.get('name'),
+                    'picture': user_info.get('picture'),
+                    'first_login_date': None
+                }
+            })
+    except Exception as e:
+        print(f"Error getting user profile: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/profile', methods=['PUT'])
+@login_required
+def update_user_profile():
+    """Update user profile (name, picture)"""
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
+    try:
+        data = request.get_json()
+        profile_data = {}
+        
+        if 'name' in data:
+            profile_data['name'] = data['name']
+        if 'picture' in data:
+            profile_data['picture'] = data['picture']
+        
+        if not profile_data:
+            return jsonify({'success': False, 'error': 'No fields to update'})
+        
+        success = mongodb_manager.update_user_profile(user_id, profile_data)
+        if success:
+            updated_profile = mongodb_manager.get_user_profile(user_id)
+            if updated_profile:
+                # Ensure all ObjectIds are converted to strings
+                if '_id' in updated_profile and isinstance(updated_profile['_id'], ObjectId):
+                    updated_profile['_id'] = str(updated_profile['_id'])
+                return jsonify({
+                    'success': True,
+                    'message': 'Profile updated successfully',
+                    'profile': updated_profile
+                })
+            else:
+                # Return basic info if profile doesn't exist
+                return jsonify({
+                    'success': True,
+                    'message': 'Profile updated successfully',
+                    'profile': {
+                        'user_id': user_id,
+                        'email': user_info.get('email'),
+                        'name': profile_data.get('name', user_info.get('name')),
+                        'picture': profile_data.get('picture', user_info.get('picture')),
+                        'first_login_date': None
+                    }
+                })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update profile'})
+    except Exception as e:
+        print(f"Error updating profile: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/profile/stats', methods=['GET'])
+@login_required
+def get_user_stats():
+    """Get user activity statistics"""
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
+    try:
+        stats = mongodb_manager.get_user_stats(user_id)
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+    except Exception as e:
+        print(f"Error getting user stats: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/profile', methods=['DELETE'])
+@login_required
+def delete_user_account():
+    """Delete user account and all associated data"""
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
+    try:
+        deleted_counts = mongodb_manager.delete_all_user_data(user_id)
+        if deleted_counts:
+            # Clear session
+            session.clear()
+            return jsonify({
+                'success': True,
+                'message': 'Account deleted successfully',
+                'deleted_counts': deleted_counts
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to delete account'})
+    except Exception as e:
+        print(f"Error deleting account: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/journal/trades', methods=['GET'])
 @login_required
 def get_user_trades():
     """Get trades for the current user"""
-    user_id = session['user_id']
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
     try:
         trades = mongodb_manager.get_user_trades(user_id)
         return jsonify({
@@ -221,7 +417,10 @@ def get_user_trades():
 @login_required
 def save_user_trade():
     """Save a trade for the current user"""
-    user_id = session['user_id']
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
     try:
         data = request.get_json()
         
@@ -239,6 +438,8 @@ def save_user_trade():
             'quantity': int(data['quantity']),
             'date': data['date'],
             'notes': data.get('notes', ''),
+            'strategy': data.get('strategy'),
+            'exit_price': None if data.get('exit_price') in (None, '', 'null') else float(data['exit_price']),
             'screenerId': data.get('screenerId'),
             'timestamp': datetime.utcnow().isoformat()
         }
@@ -263,7 +464,10 @@ def save_user_trade():
 @login_required
 def delete_user_trade(trade_id):
     """Delete a trade for the current user"""
-    user_id = session['user_id']
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
     try:
         success = mongodb_manager.delete_trade(user_id, trade_id)
         if success:
@@ -278,7 +482,10 @@ def delete_user_trade(trade_id):
 @login_required
 def update_user_trade(trade_id):
     """Update a trade for the current user"""
-    user_id = session['user_id']
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
     try:
         data = request.get_json()
         
@@ -296,12 +503,22 @@ def update_user_trade(trade_id):
             trade_data['date'] = data['date']
         if 'notes' in data:
             trade_data['notes'] = data['notes']
+        if 'strategy' in data:
+            trade_data['strategy'] = data['strategy']
         if 'screenerId' in data:
             trade_data['screenerId'] = data['screenerId']
+        if 'exit_price' in data:
+            exit_value = data['exit_price']
+            trade_data['exit_price'] = None if exit_value is None else float(exit_value)
         
         success = mongodb_manager.update_trade(user_id, trade_id, trade_data)
         if success:
-            return jsonify({'success': True, 'message': 'Trade updated successfully'})
+            updated_trade = mongodb_manager.get_trade_by_id(user_id, trade_id)
+            return jsonify({
+                'success': True,
+                'message': 'Trade updated successfully',
+                'trade': updated_trade
+            })
         else:
             return jsonify({'success': False, 'error': 'Trade not found or could not be updated'})
     except Exception as e:
@@ -312,7 +529,10 @@ def update_user_trade(trade_id):
 @login_required
 def get_user_watchlist():
     """Get watchlist items for the current user"""
-    user_id = session['user_id']
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
     try:
         items = mongodb_manager.get_user_watchlist(user_id)
         return jsonify({
@@ -327,7 +547,10 @@ def get_user_watchlist():
 @login_required
 def save_user_watchlist_item():
     """Save a watchlist item for the current user"""
-    user_id = session['user_id']
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
     try:
         data = request.get_json()
         
@@ -364,7 +587,10 @@ def save_user_watchlist_item():
 @login_required
 def delete_user_watchlist_item(item_id):
     """Delete a watchlist item for the current user"""
-    user_id = session['user_id']
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
     try:
         success = mongodb_manager.delete_watchlist_item(user_id, item_id)
         if success:
@@ -379,7 +605,10 @@ def delete_user_watchlist_item(item_id):
 @login_required
 def update_user_watchlist_item(item_id):
     """Update a watchlist item for the current user"""
-    user_id = session['user_id']
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    user_id = user_info['user_id']
     try:
         data = request.get_json()
         
@@ -402,6 +631,63 @@ def update_user_watchlist_item(item_id):
     except Exception as e:
         print(f"Error updating watchlist item: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/query/list', methods=['GET'])
+@login_required
+def list_saved_queries():
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'message': 'Authentication required'}), 401
+    queries = mongodb_manager.get_user_queries(user_info['user_id'])
+    return jsonify({'success': True, 'queries': queries})
+
+@app.route('/api/query/save', methods=['POST'])
+@login_required
+def save_user_query_route():
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'message': 'Authentication required'}), 401
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    filters = data.get('filters')
+    if not name:
+        return jsonify({'success': False, 'message': 'Query name is required'}), 400
+    if not filters or not isinstance(filters, dict):
+        return jsonify({'success': False, 'message': 'Filters payload is required'}), 400
+    query_payload = {
+        'name': name,
+        'description': (data.get('description') or '').strip(),
+        'filters': filters,
+        'is_favorite': bool(data.get('is_favorite')),
+        'owner_name': user_info.get('name'),
+        'owner_email': user_info.get('email')
+    }
+    query_id = mongodb_manager.save_user_query(user_info['user_id'], query_payload)
+    if not query_id:
+        return jsonify({'success': False, 'message': 'Failed to save query'}), 500
+    return jsonify({'success': True, 'query_id': query_id})
+
+@app.route('/api/query/load/<query_id>', methods=['GET'])
+@login_required
+def load_user_query(query_id):
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'message': 'Authentication required'}), 401
+    query = mongodb_manager.get_user_query(user_info['user_id'], query_id)
+    if not query:
+        return jsonify({'success': False, 'message': 'Query not found'}), 404
+    return jsonify({'success': True, 'query': query})
+
+@app.route('/api/query/delete/<query_id>', methods=['DELETE'])
+@login_required
+def delete_user_query_route(query_id):
+    user_info = get_user_info()
+    if not user_info:
+        return jsonify({'success': False, 'message': 'Authentication required'}), 401
+    success = mongodb_manager.delete_user_query(user_info['user_id'], query_id)
+    if success:
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'message': 'Query not found'}), 404
 
 @app.route('/api/prices/cache', methods=['GET'])
 def get_cached_prices():
@@ -461,15 +747,15 @@ def fetch_live_prices():
     try:
         data = request.get_json()
         symbols = data.get('symbols', [])
+        print('symbols', symbols)
         
         if not symbols:
             return jsonify({'success': False, 'error': 'No symbols provided'})
         
-        # Import TradingView API function
-        from tradingview_api import fetch_stock_prices
-        
-        # Fetch live prices
-        live_prices = fetch_stock_prices(symbols)
+        # Fetch live prices using TradingView screener
+        print(f"[prices.fetch] Fetching live prices for symbols: {symbols}")
+        live_prices = fetch_symbol_quotes(symbols)
+        print(f"[prices.fetch] Screener response: {live_prices}")
         
         # Cache the prices
         for symbol, price_data in live_prices.items():
@@ -480,6 +766,8 @@ def fetch_live_prices():
                     change=price_data['change'],
                     change_percent=price_data['changePercent']
                 )
+            else:
+                print(f"[prices.fetch] No price data returned for {symbol}")
         
         return jsonify({
             'success': True,
@@ -489,14 +777,6 @@ def fetch_live_prices():
         print(f"Error fetching live prices: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-
-@app.route('/favicon.ico')
-def favicon():
-    return send_file('favicon.ico', mimetype='image/x-icon')
-
-@app.route('/trv_api_logo.svg')
-def logo():
-    return send_file('trv_api_logo.svg', mimetype='image/svg+xml')
 
 @app.route('/api/fields', methods=['GET'])
 def get_fields_metadata():

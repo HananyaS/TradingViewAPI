@@ -66,10 +66,16 @@ class FilterSerializer:
                     print(f"   Group filters type: {type(group_filters)}")
                     
                     if isinstance(group_filters, list):
-                        filters.extend(group_filters)
+                        # Filter out None values (from unsupported operators)
+                        valid_filters = [f for f in group_filters if f is not None]
+                        if len(valid_filters) < len(group_filters):
+                            print(f"   ⚠️ Filtered out {len(group_filters) - len(valid_filters)} None/unsupported filters")
+                        filters.extend(valid_filters)
                     else:
-                        print(f"❌ group_filters is not a list: {type(group_filters)} = {group_filters}")
-                        filters.append(group_filters)
+                        if group_filters is not None:
+                            filters.append(group_filters)
+                        else:
+                            print(f"   ⚠️ Skipping None filter")
                     print(f"   Total filters so far: {len(filters)}")
                 except Exception as e:
                     print(f"❌ Error processing group {i}: {e}")
@@ -77,18 +83,27 @@ class FilterSerializer:
         
         # Apply filters to query
         if filters:
+            print(f"📌 Applying {len(filters)} filter conditions to query:")
+            for i, f in enumerate(filters):
+                print(f"   Filter {i+1}: {f}")
             query = query.where(*filters)
+        else:
+            print(f"⚠️ No filters to apply!")
         
         # Apply sorting
         if request.sort_by:
             query = query.order_by(request.sort_by, ascending=request.sort_ascending)
         
-        # Apply limit - skip if None
+        # Apply limit - use reasonable default if None
         if request.limit and isinstance(request.limit, int) and request.limit > 0:
             print(f"📊 Applying limit: {request.limit}")
             query = query.limit(request.limit)
         else:
-            print(f"📊 No limit applied - will return all results")
+            # TradingView has a default limit of 50, so we need to explicitly set a higher limit
+            # Use 1000 as a reasonable default (not too high to cause timeouts)
+            default_limit = 1000
+            print(f"📊 No limit specified - applying default limit: {default_limit}")
+            query = query.limit(default_limit)
         
         print(f"🏁 Query built successfully")
         return query
@@ -181,6 +196,10 @@ class FilterSerializer:
             # Convert operator to TradingView condition
             if rule.operator == OperatorType.EQUALS:
                 print(f"   Building condition: {field_name} == {right_value}")
+                # Special handling for exchange field - must be uppercase
+                if field_name.lower() == 'exchange' and isinstance(right_value, str):
+                    right_value = right_value.upper().strip()
+                    print(f"   ⚠️ Exchange filter - normalized value to: '{right_value}'")
                 return column == right_value
             elif rule.operator == OperatorType.NOT_EQUALS:
                 print(f"   Building condition: {field_name} != {right_value}")
@@ -229,6 +248,14 @@ class FilterSerializer:
                 else:
                     raise ValueError("BETWEEN operator requires array of [min, max] values")
             elif rule.operator == OperatorType.IN:
+                # Special handling for exchange field - must be uppercase
+                if field_name.lower() == 'exchange':
+                    if isinstance(right_value, list):
+                        right_value = [v.upper().strip() if isinstance(v, str) else v for v in right_value]
+                    elif isinstance(right_value, str):
+                        right_value = [right_value.upper().strip()]
+                    print(f"   ⚠️ Exchange IN filter - normalized values to: {right_value}")
+                
                 if isinstance(right_value, list):
                     return column.isin(right_value)
                 else:
@@ -238,6 +265,15 @@ class FilterSerializer:
                     return ~column.isin(right_value)
                 else:
                     return ~column.isin([right_value])
+            elif rule.operator in [OperatorType.CONTAINS, OperatorType.NOT_CONTAINS, OperatorType.STARTS_WITH, OperatorType.ENDS_WITH]:
+                # TradingView API doesn't support pattern matching for text fields
+                # Fall back to exact match for CONTAINS/STARTS_WITH/ENDS_WITH
+                print(f"   ⚠️ WARNING: {rule.operator} not supported by TradingView, using EQUALS instead")
+                print(f"   Building condition: {field_name} == '{right_value}'")
+                if rule.operator == OperatorType.NOT_CONTAINS:
+                    return column != right_value
+                else:
+                    return column == right_value
             elif rule.operator == OperatorType.FIELD_EQUALS:
                 # Field-to-field comparison
                 if rule.right_operand.type == "field":
@@ -300,19 +336,6 @@ class FilterSerializer:
                         raise ValueError("FIELD_LESS_THAN_BY_PERCENT requires field and percentage")
                 else:
                     raise ValueError("FIELD_LESS_THAN_BY_PERCENT requires field operand")
-            
-            # String operators
-            elif rule.operator == OperatorType.CONTAINS:
-                # TradingView doesn't have direct contains, use regex-like approach if possible
-                # For now, fall back to equals for exact matches
-                print(f"⚠️ CONTAINS operator not fully supported, using equals for: {field_name}")
-                return column == right_value
-            elif rule.operator == OperatorType.STARTS_WITH:
-                print(f"⚠️ STARTS_WITH operator not fully supported, using equals for: {field_name}")
-                return column == right_value
-            elif rule.operator == OperatorType.ENDS_WITH:
-                print(f"⚠️ ENDS_WITH operator not fully supported, using equals for: {field_name}")
-                return column == right_value
             else:
                 raise ValueError(f"Unsupported operator: {rule.operator}")
                 

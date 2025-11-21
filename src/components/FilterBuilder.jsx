@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PlusIcon, TrashIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { getFieldConfig, getOperatorOptions, getDefaultOperator } from '../utils/fieldDictionary';
 
 const FilterBuilder = ({ filters, onChange, theme }) => {
   const [fieldMetadata, setFieldMetadata] = useState(null);
@@ -81,31 +82,10 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
     onChange(newFilters);
   };
 
-  const getOperatorsForType = (fieldType) => {
-    const baseOperators = [
-      { value: 'equals', label: '=', description: 'Equal to' },
-      { value: 'not_equals', label: '≠', description: 'Not equal to' }
-    ];
-
-    if (fieldType === 'number') {
-      return [
-        ...baseOperators,
-        { value: 'greater_than', label: '>', description: 'Greater than' },
-        { value: 'greater_than_or_equal', label: '≥', description: 'Greater than or equal' },
-        { value: 'less_than', label: '<', description: 'Less than' },
-        { value: 'less_than_or_equal', label: '≤', description: 'Less than or equal' },
-        { value: 'between', label: 'between', description: 'Between two values' },
-        { value: 'field_greater_than', label: '> field', description: 'Greater than another field' },
-        { value: 'field_less_than', label: '< field', description: 'Less than another field' },
-        { value: 'field_greater_than_by_percent', label: '> field by %', description: 'Greater than field by percentage' }
-      ];
-    }
-
-    return baseOperators;
-  };
-
-  const renderFieldSelect = (value, onChange) => {
+  const renderFieldSelect = (value, onChange, placeholder = 'Select field...') => {
     if (!fieldMetadata) return null;
+
+    const groupedFields = fieldMetadata.grouped_fields || {};
 
     return (
       <div className="relative">
@@ -118,10 +98,10 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
               : 'bg-white border-gray-300 text-gray-900'
           }`}
         >
-          <option value="">Select field...</option>
-          {fieldMetadata.groups.map(groupName => (
+          <option value="">{placeholder}</option>
+          {(fieldMetadata.groups || []).map(groupName => (
             <optgroup key={groupName} label={groupName}>
-              {fieldMetadata.grouped_fields[groupName]?.map(field => (
+              {groupedFields[groupName]?.map(field => (
                 <option key={field.Name} value={field.Name}>
                   {field['Display name'] || field.Name}
                 </option>
@@ -135,7 +115,7 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
   };
 
   const renderOperatorSelect = (fieldType, value, onChange) => {
-    const operators = getOperatorsForType(fieldType);
+    const operators = getOperatorOptions(fieldType);
 
     return (
       <div className="relative">
@@ -159,7 +139,35 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
     );
   };
 
-  const renderValueInput = (operator, value, onChange, fieldType = 'number') => {
+  const renderValueInput = (rule, field, onChange) => {
+    const operator = rule.operator;
+    const value = rule.right_operand.value;
+    const fieldType = field?.Type || 'number';
+    const config = getFieldConfig(field?.Name, fieldType);
+
+    const handleValueChange = (newValue, operandType = 'constant') => {
+      onChange({
+        type: operandType,
+        value: newValue
+      });
+    };
+
+    const isFieldOperator = [
+      'field_equals',
+      'field_greater_than',
+      'field_less_than',
+      'field_greater_than_by_percent',
+      'field_less_than_by_percent'
+    ].includes(operator);
+
+    if (isFieldOperator) {
+      return renderFieldSelect(
+        value,
+        (selectedField) => handleValueChange(selectedField, 'field'),
+        'Select comparison field...'
+      );
+    }
+
     if (operator === 'between') {
       const arrayValue = Array.isArray(value) ? value : ['', ''];
       return (
@@ -167,8 +175,11 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
           <input
             type="number"
             value={arrayValue[0]}
-            onChange={(e) => onChange([e.target.value, arrayValue[1]])}
+            onChange={(e) => handleValueChange([e.target.value, arrayValue[1]])}
             placeholder="Min"
+            step={config.step || 0.01}
+            min={config.min}
+            max={config.max}
             className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
               theme === 'dark' 
                 ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
@@ -178,8 +189,11 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
           <input
             type="number"
             value={arrayValue[1]}
-            onChange={(e) => onChange([arrayValue[0], e.target.value])}
+            onChange={(e) => handleValueChange([arrayValue[0], e.target.value])}
             placeholder="Max"
+            step={config.step || 0.01}
+            min={config.min}
+            max={config.max}
             className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
               theme === 'dark' 
                 ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
@@ -190,23 +204,94 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
       );
     }
 
-    if (operator.includes('field')) {
-      return renderFieldSelect(value, onChange);
+    if (['in', 'not_in'].includes(operator) || config.multi) {
+      const selectedValues = Array.isArray(value)
+        ? value
+        : value
+          ? [value]
+          : [];
+
+      if (config.inputType === 'enum' && Array.isArray(config.options)) {
+        const isMulti = config.multi || ['in', 'not_in'].includes(operator);
+        return (
+          <select
+            multiple={isMulti}
+            value={selectedValues}
+            onChange={(e) => {
+              const selections = Array.from(e.target.selectedOptions).map(opt => opt.value);
+              handleValueChange(isMulti ? selections : selections[0] || '');
+            }}
+            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              theme === 'dark' 
+                ? 'bg-gray-700 border-gray-600 text-white' 
+                : 'bg-white border-gray-300 text-gray-900'
+            }`}
+          >
+            {!isMulti && <option value="">Select value...</option>}
+            {config.options.map(option => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        );
+      }
     }
 
-    const inputType = fieldType === 'number' ? 'number' : 'text';
+    if (fieldType === 'enum' && config.inputType === 'enum' && Array.isArray(config.options)) {
+      return (
+        <select
+          value={value || ''}
+          onChange={(e) => handleValueChange(e.target.value)}
+          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+            theme === 'dark' 
+              ? 'bg-gray-700 border-gray-600 text-white' 
+              : 'bg-white border-gray-300 text-gray-900'
+          }`}
+        >
+          <option value="">{config.placeholder || 'Select value...'}</option>
+          {config.options.map(option => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    const inputType = fieldType === 'number' || config.inputType === 'currency' || config.inputType === 'percent'
+      ? 'number'
+      : 'text';
+    const inputValue = value ?? '';
+
+    const extraPadding = [
+      config.inputType === 'currency' ? 'pl-7' : '',
+      config.inputType === 'percent' ? 'pr-7' : ''
+    ].join(' ').trim();
+
     return (
-      <input
-        type={inputType}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={`Enter ${fieldType}...`}
-        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-          theme === 'dark' 
-            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-        }`}
-      />
+      <div className="relative">
+        <input
+          type={inputType}
+          value={inputValue}
+          onChange={(e) => handleValueChange(e.target.value)}
+          placeholder={config.placeholder || `Enter ${fieldType}...`}
+          step={config.step || (inputType === 'number' ? 0.01 : undefined)}
+          min={config.min}
+          max={config.max}
+          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${extraPadding} ${
+            theme === 'dark' 
+              ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+              : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+          }`}
+        />
+        {config.inputType === 'percent' && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
+        )}
+        {config.inputType === 'currency' && (
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+        )}
+      </div>
     );
   };
 
@@ -215,7 +300,7 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         <span className={`ml-3 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
-          Loading filter builder...
+          Loading strategy builder...
         </span>
       </div>
     );
@@ -306,9 +391,15 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
                   <div className="col-span-4">
                     {renderFieldSelect(
                       rule.left_operand.value,
-                      (value) => updateRule(groupIndex, ruleIndex, {
-                        left_operand: { type: 'field', value }
-                      })
+                      (value) => {
+                        const selectedField = fieldMetadata?.fields.find(f => f.Name === value);
+                        const nextFieldType = selectedField?.Type || 'number';
+                        updateRule(groupIndex, ruleIndex, {
+                          left_operand: { type: 'field', value, field_type: nextFieldType },
+                          operator: getDefaultOperator(nextFieldType),
+                          right_operand: { type: 'constant', value: '' }
+                        });
+                      }
                     )}
                   </div>
 
@@ -324,12 +415,11 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
                   {/* Right Operand (Value) */}
                   <div className="col-span-4">
                     {renderValueInput(
-                      rule.operator,
-                      rule.right_operand.value,
-                      (value) => updateRule(groupIndex, ruleIndex, {
-                        right_operand: { type: 'constant', value }
-                      }),
-                      fieldType
+                      rule,
+                      field,
+                      (operand) => updateRule(groupIndex, ruleIndex, {
+                        right_operand: operand
+                      })
                     )}
                   </div>
 
@@ -361,7 +451,7 @@ const FilterBuilder = ({ filters, onChange, theme }) => {
           }`}
         >
           <PlusIcon className="h-4 w-4 inline mr-2" />
-          Add Filter Group
+          Add Strategy Group
         </button>
       </div>
     </div>

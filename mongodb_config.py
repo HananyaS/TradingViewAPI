@@ -441,6 +441,25 @@ class MongoDBManager:
             print(f"Error clearing old price cache: {e}")
 
     # Trades collection methods
+    def _format_trade_doc(self, trade):
+        """Normalize trade document for API responses"""
+        doc = trade.copy()
+        raw_id = doc.get('_id') or doc.get('id')
+        if isinstance(raw_id, ObjectId):
+            raw_id = str(raw_id)
+        if raw_id is not None:
+            doc['_id'] = str(raw_id)
+            doc['id'] = str(raw_id)
+        if isinstance(doc.get('created_at'), datetime):
+            doc['created_at'] = doc['created_at'].isoformat()
+        if isinstance(doc.get('updated_at'), datetime):
+            doc['updated_at'] = doc['updated_at'].isoformat()
+        if isinstance(doc.get('date'), datetime):
+            doc['date'] = doc['date'].isoformat()
+        if isinstance(doc.get('trade_date'), datetime):
+            doc['trade_date'] = doc['trade_date'].isoformat()
+        return doc
+
     def save_trade(self, user_id, trade_data):
         """Save a trade for a user"""
         try:
@@ -487,10 +506,7 @@ class MongoDBManager:
                 user_trades = []
                 for trade in self._fallback_trades:
                     if trade.get('user_id') == user_id:
-                        trade_copy = trade.copy()
-                        trade_copy['_id'] = str(trade_copy['_id'])
-                        trade_copy['created_at'] = trade_copy['created_at'].isoformat()
-                        user_trades.append(trade_copy)
+                        user_trades.append(self._format_trade_doc(trade))
                 
                 return user_trades
             
@@ -498,13 +514,7 @@ class MongoDBManager:
             trades_collection = self.db.trades
             
             trades = list(trades_collection.find({'user_id': user_id}).sort('created_at', -1))
-            
-            # Convert ObjectId to string and dates to ISO format
-            for trade in trades:
-                trade['_id'] = str(trade['_id'])
-                trade['created_at'] = trade['created_at'].isoformat()
-            
-            return trades
+            return [self._format_trade_doc(trade) for trade in trades]
             
         except Exception as e:
             print(f"Error getting user trades: {e}")
@@ -559,10 +569,11 @@ class MongoDBManager:
             trades_collection = self.db.trades
             
             try:
+                object_id = ObjectId(trade_id)
                 trade_data['updated_at'] = datetime.utcnow()
                 result = trades_collection.update_one(
                     {
-                        '_id': ObjectId(trade_id),
+                        '_id': object_id,
                         'user_id': user_id
                     },
                     {'$set': trade_data}
@@ -573,6 +584,169 @@ class MongoDBManager:
             
         except Exception as e:
             print(f"Error updating trade: {e}")
+            return False
+
+    def get_trade_by_id(self, user_id, trade_id):
+        """Fetch a single trade document"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_trades'):
+                    self._fallback_trades = []
+                for trade in self._fallback_trades:
+                    if trade.get('_id') == trade_id and trade.get('user_id') == user_id:
+                        return self._format_trade_doc(trade)
+                return None
+
+            trades_collection = self.db.trades
+            try:
+                trade = trades_collection.find_one({'_id': ObjectId(trade_id), 'user_id': user_id})
+            except Exception:
+                return None
+            if trade:
+                return self._format_trade_doc(trade)
+            return None
+        except Exception as e:
+            print(f"Error fetching trade: {e}")
+            return None
+
+    # Saved query collection methods
+    def _format_query_doc(self, doc):
+        formatted = doc.copy()
+        formatted['id'] = str(formatted.pop('_id', formatted.get('_id')))
+        if isinstance(formatted.get('created_at'), datetime):
+            formatted['created_at'] = formatted['created_at'].isoformat()
+        if isinstance(formatted.get('updated_at'), datetime):
+            formatted['updated_at'] = formatted['updated_at'].isoformat()
+        return formatted
+
+    def save_user_query(self, user_id, query_data):
+        """Save a screener/filter configuration for a user"""
+        try:
+            doc = {
+                'user_id': user_id,
+                'name': query_data.get('name'),
+                'description': query_data.get('description', ''),
+                'filters': query_data.get('filters', {}),
+                'is_favorite': bool(query_data.get('is_favorite')),
+                'owner_name': query_data.get('owner_name'),
+                'owner_email': query_data.get('owner_email'),
+                'created_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow()
+            }
+
+            if self.client is None:
+                if not hasattr(self, '_fallback_queries'):
+                    self._fallback_queries = []
+                self._fallback_counter += 1
+                doc['_id'] = str(self._fallback_counter)
+                self._fallback_queries.append(doc)
+                return str(doc['_id'])
+
+            collection = self.db.user_queries
+            result = collection.insert_one(doc)
+            return str(result.inserted_id)
+        except Exception as e:
+            print(f"Error saving user query: {e}")
+            return None
+
+    def get_user_queries(self, user_id):
+        """Get saved queries for a user"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_queries'):
+                    self._fallback_queries = []
+                user_queries = [
+                    self._format_query_doc(q)
+                    for q in self._fallback_queries
+                    if q.get('user_id') == user_id
+                ]
+                user_queries.sort(key=lambda q: q['created_at'], reverse=True)
+                return user_queries
+
+            collection = self.db.user_queries
+            queries = list(collection.find({'user_id': user_id}).sort('created_at', -1))
+            return [self._format_query_doc(q) for q in queries]
+        except Exception as e:
+            print(f"Error loading user queries: {e}")
+            return []
+
+    def get_user_query(self, user_id, query_id):
+        """Get a specific saved query"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_queries'):
+                    self._fallback_queries = []
+                for query in self._fallback_queries:
+                    if query.get('_id') == query_id and query.get('user_id') == user_id:
+                        return self._format_query_doc(query)
+                return None
+
+            collection = self.db.user_queries
+            try:
+                object_id = ObjectId(query_id)
+            except Exception:
+                return None
+            query = collection.find_one({'_id': object_id, 'user_id': user_id})
+            if query:
+                return self._format_query_doc(query)
+            return None
+        except Exception as e:
+            print(f"Error getting user query: {e}")
+            return None
+
+    def delete_user_query(self, user_id, query_id):
+        """Delete a saved query"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_queries'):
+                    self._fallback_queries = []
+                for i, query in enumerate(self._fallback_queries):
+                    if query.get('_id') == query_id and query.get('user_id') == user_id:
+                        del self._fallback_queries[i]
+                        return True
+                return False
+
+            collection = self.db.user_queries
+            try:
+                object_id = ObjectId(query_id)
+            except Exception:
+                return False
+            result = collection.delete_one({'_id': object_id, 'user_id': user_id})
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting user query: {e}")
+            return False
+
+    def update_user_query(self, user_id, query_id, updates):
+        """Update fields on a saved query"""
+        try:
+            updates = {k: v for k, v in updates.items() if k in {'name', 'description', 'filters', 'is_favorite'}}
+            if not updates:
+                return False
+
+            if self.client is None:
+                if not hasattr(self, '_fallback_queries'):
+                    self._fallback_queries = []
+                for query in self._fallback_queries:
+                    if query.get('_id') == query_id and query.get('user_id') == user_id:
+                        query.update(updates)
+                        query['updated_at'] = datetime.utcnow()
+                        return True
+                return False
+
+            collection = self.db.user_queries
+            try:
+                object_id = ObjectId(query_id)
+            except Exception:
+                return False
+            updates['updated_at'] = datetime.utcnow()
+            result = collection.update_one(
+                {'_id': object_id, 'user_id': user_id},
+                {'$set': updates}
+            )
+            return result.modified_count > 0
+        except Exception as e:
+            print(f"Error updating user query: {e}")
             return False
 
     # Watchlist collection methods
@@ -709,6 +883,233 @@ class MongoDBManager:
         except Exception as e:
             print(f"Error updating watchlist item: {e}")
             return False
+
+    # User profile collection methods
+    def get_or_create_user(self, user_id, email, name, picture):
+        """Get user profile or create if doesn't exist (tracks first login)"""
+        try:
+            if self.client is None:
+                # Use fallback storage
+                if not hasattr(self, '_fallback_users'):
+                    self._fallback_users = []
+                
+                # Find existing user
+                for user in self._fallback_users:
+                    if user.get('user_id') == user_id:
+                        return user
+                
+                # Create new user
+                user_doc = {
+                    'user_id': user_id,
+                    'email': email,
+                    'name': name,
+                    'picture': picture,
+                    'first_login_date': datetime.utcnow(),
+                    'created_at': datetime.utcnow(),
+                    'updated_at': datetime.utcnow()
+                }
+                self._fallback_users.append(user_doc)
+                return user_doc
+            
+            # Use MongoDB users collection
+            users_collection = self.db.users
+            
+            # Try to find existing user
+            user = users_collection.find_one({'user_id': user_id})
+            
+            if user:
+                # User exists, return it
+                return user
+            
+            # Create new user with first login date
+            user_doc = {
+                'user_id': user_id,
+                'email': email,
+                'name': name,
+                'picture': picture,
+                'first_login_date': datetime.utcnow(),
+                'created_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow()
+            }
+            users_collection.insert_one(user_doc)
+            return user_doc
+            
+        except Exception as e:
+            print(f"Error getting/creating user: {e}")
+            return None
+
+    def get_user_profile(self, user_id):
+        """Get user profile"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_users'):
+                    self._fallback_users = []
+                for user in self._fallback_users:
+                    if user.get('user_id') == user_id:
+                        return self._format_user_doc(user)
+                return None
+            
+            users_collection = self.db.users
+            user = users_collection.find_one({'user_id': user_id})
+            if user:
+                return self._format_user_doc(user)
+            return None
+            
+        except Exception as e:
+            print(f"Error getting user profile: {e}")
+            return None
+
+    def update_user_profile(self, user_id, profile_data):
+        """Update user profile (name, picture, etc.)"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_users'):
+                    self._fallback_users = []
+                for user in self._fallback_users:
+                    if user.get('user_id') == user_id:
+                        user.update(profile_data)
+                        user['updated_at'] = datetime.utcnow()
+                        return True
+                return False
+            
+            users_collection = self.db.users
+            profile_data['updated_at'] = datetime.utcnow()
+            result = users_collection.update_one(
+                {'user_id': user_id},
+                {'$set': profile_data}
+            )
+            return result.modified_count > 0
+            
+        except Exception as e:
+            print(f"Error updating user profile: {e}")
+            return False
+
+    def _format_user_doc(self, user):
+        """Format user document for API responses"""
+        doc = user.copy()
+        # Convert ObjectId to string
+        if '_id' in doc:
+            if isinstance(doc['_id'], ObjectId):
+                doc['_id'] = str(doc['_id'])
+        if isinstance(doc.get('first_login_date'), datetime):
+            doc['first_login_date'] = doc['first_login_date'].isoformat()
+        if isinstance(doc.get('created_at'), datetime):
+            doc['created_at'] = doc['created_at'].isoformat()
+        if isinstance(doc.get('updated_at'), datetime):
+            doc['updated_at'] = doc['updated_at'].isoformat()
+        return doc
+
+    def delete_all_user_data(self, user_id):
+        """Delete all user data from all collections"""
+        try:
+            deleted_counts = {
+                'trades': 0,
+                'watchlist': 0,
+                'user_queries': 0,
+                'screeners': 0,
+                'users': 0
+            }
+            
+            if self.client is None:
+                # Fallback storage
+                # Delete trades
+                if hasattr(self, '_fallback_trades'):
+                    original_count = len(self._fallback_trades)
+                    self._fallback_trades = [t for t in self._fallback_trades if t.get('user_id') != user_id]
+                    deleted_counts['trades'] = original_count - len(self._fallback_trades)
+                
+                # Delete watchlist
+                if hasattr(self, '_fallback_watchlist'):
+                    original_count = len(self._fallback_watchlist)
+                    self._fallback_watchlist = [w for w in self._fallback_watchlist if w.get('user_id') != user_id]
+                    deleted_counts['watchlist'] = original_count - len(self._fallback_watchlist)
+                
+                # Delete queries
+                if hasattr(self, '_fallback_queries'):
+                    original_count = len(self._fallback_queries)
+                    self._fallback_queries = [q for q in self._fallback_queries if q.get('user_id') != user_id]
+                    deleted_counts['user_queries'] = original_count - len(self._fallback_queries)
+                
+                # Delete screeners
+                if hasattr(self, '_fallback_storage'):
+                    original_count = len(self._fallback_storage)
+                    self._fallback_storage = [s for s in self._fallback_storage if s.get('user_id') != user_id]
+                    deleted_counts['screeners'] = original_count - len(self._fallback_storage)
+                
+                # Delete user
+                if hasattr(self, '_fallback_users'):
+                    original_count = len(self._fallback_users)
+                    self._fallback_users = [u for u in self._fallback_users if u.get('user_id') != user_id]
+                    deleted_counts['users'] = original_count - len(self._fallback_users)
+                
+                return deleted_counts
+            
+            # MongoDB collections
+            # Delete trades
+            trades_collection = self.db.trades
+            result = trades_collection.delete_many({'user_id': user_id})
+            deleted_counts['trades'] = result.deleted_count
+            
+            # Delete watchlist
+            watchlist_collection = self.db.watchlist
+            result = watchlist_collection.delete_many({'user_id': user_id})
+            deleted_counts['watchlist'] = result.deleted_count
+            
+            # Delete queries
+            queries_collection = self.db.user_queries
+            result = queries_collection.delete_many({'user_id': user_id})
+            deleted_counts['user_queries'] = result.deleted_count
+            
+            # Delete screeners
+            screeners_collection = self.db.screeners
+            result = screeners_collection.delete_many({'user_id': user_id})
+            deleted_counts['screeners'] = result.deleted_count
+            
+            # Delete user profile
+            users_collection = self.db.users
+            result = users_collection.delete_many({'user_id': user_id})
+            deleted_counts['users'] = result.deleted_count
+            
+            return deleted_counts
+            
+        except Exception as e:
+            print(f"Error deleting user data: {e}")
+            return None
+
+    def get_user_stats(self, user_id):
+        """Get user activity statistics"""
+        try:
+            stats = {
+                'saved_queries': 0,
+                'watchlist_items': 0,
+                'journal_entries': 0
+            }
+            
+            if self.client is None:
+                # Fallback storage
+                if hasattr(self, '_fallback_queries'):
+                    stats['saved_queries'] = len([q for q in self._fallback_queries if q.get('user_id') == user_id])
+                if hasattr(self, '_fallback_watchlist'):
+                    stats['watchlist_items'] = len([w for w in self._fallback_watchlist if w.get('user_id') == user_id])
+                if hasattr(self, '_fallback_trades'):
+                    stats['journal_entries'] = len([t for t in self._fallback_trades if t.get('user_id') == user_id])
+                return stats
+            
+            # MongoDB collections
+            queries_collection = self.db.user_queries
+            stats['saved_queries'] = queries_collection.count_documents({'user_id': user_id})
+            
+            watchlist_collection = self.db.watchlist
+            stats['watchlist_items'] = watchlist_collection.count_documents({'user_id': user_id})
+            
+            trades_collection = self.db.trades
+            stats['journal_entries'] = trades_collection.count_documents({'user_id': user_id})
+            
+            return stats
+            
+        except Exception as e:
+            print(f"Error getting user stats: {e}")
+            return {'saved_queries': 0, 'watchlist_items': 0, 'journal_entries': 0}
 
 # Global MongoDB manager instance
 mongodb_manager = MongoDBManager() 

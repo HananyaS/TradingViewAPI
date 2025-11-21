@@ -9,9 +9,12 @@ from telegram.ext import ContextTypes
 
 from commands import Command
 
-BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-if not BOT_TOKEN:
-    raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set. Please set it with your bot token.")
+
+def get_bot_token() -> str:
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if not token:
+        raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set. Please set it with your bot token.")
+    return token
 
 
 def create_csv_from_pd(results):

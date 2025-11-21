@@ -617,18 +617,32 @@ class FilterBuilder {
       return;
     }
 
-    const tableHtml = this.createResultsTable(result.data, result.columns);
+    // Default columns to display
+    const defaultColumns = ['name', 'open', 'high', 'low', 'close', 'change', 'volume'];
+    
+    // Initialize visible columns if not already set
+    if (!this.visibleColumns) {
+      this.visibleColumns = [...defaultColumns];
+    }
+    
+    const tableHtml = this.createResultsTable(result.data, this.visibleColumns);
+    const columnSelectorHtml = this.createColumnSelector(result.columns, defaultColumns);
     
     resultsContainer.innerHTML = `
       <div class="results-header">
-        <h4>📊 Screener Results</h4>
-        <div class="results-info">
-          Found <strong>${result.count}</strong> symbols
-          ${result.csv_data ? `
-            <button class="btn btn-secondary" onclick="filterBuilder.downloadResults('${result.filename}')">
-              📥 Download CSV
-            </button>
-          ` : ''}
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h4>📊 Screener Results</h4>
+          </div>
+          <div class="results-info">
+            Found <strong>${result.count}</strong> symbols
+            ${columnSelectorHtml}
+            ${result.csv_data ? `
+              <button class="btn btn-secondary" onclick="filterBuilder.downloadResults('${result.filename}')">
+                📥 Download CSV
+              </button>
+            ` : ''}
+          </div>
         </div>
       </div>
       <div class="results-table-container">
@@ -636,8 +650,233 @@ class FilterBuilder {
       </div>
     `;
 
-    // Store results for download
+    // Store results for download and re-rendering
     this.lastResults = result;
+    this.allColumns = result.columns;
+    this.defaultColumns = defaultColumns;
+  }
+
+  createColumnSelector(allColumns, defaultColumns) {
+    const additionalColumns = allColumns.filter(col => !defaultColumns.includes(col));
+    const allAdditionalSelected = additionalColumns.every(col => this.visibleColumns.includes(col));
+    
+    return `
+      <div class="column-selector" style="position: relative; display: inline-block; margin-right: 10px;">
+        <button class="btn btn-secondary" onclick="filterBuilder.toggleColumnSelector()" id="columnSelectorBtn">
+          ⚙️ Columns
+        </button>
+        <div id="columnSelectorDropdown" class="column-selector-dropdown" style="display: none;">
+          <div class="column-selector-header">
+            <strong>Select Columns</strong>
+          </div>
+          <div class="column-selector-section">
+            <div class="column-selector-section-title">Default Columns</div>
+            ${defaultColumns.map(col => `
+              <label class="column-selector-item">
+                <input 
+                  type="checkbox" 
+                  value="${col}" 
+                  ${this.visibleColumns.includes(col) ? 'checked' : ''}
+                  onchange="filterBuilder.toggleColumn('${col}')"
+                />
+                <span>${this.getColumnDisplayName(col)}</span>
+              </label>
+            `).join('')}
+          </div>
+          ${additionalColumns.length > 0 ? `
+            <div class="column-selector-section">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div class="column-selector-section-title" style="margin-bottom: 0;">Additional Columns</div>
+                <button 
+                  class="btn btn-sm" 
+                  style="padding: 4px 8px; font-size: 11px;"
+                  onclick="${allAdditionalSelected ? 'filterBuilder.deselectAllAdditional()' : 'filterBuilder.selectAllColumns()'}"
+                >
+                  ${allAdditionalSelected ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
+              ${additionalColumns.map(col => `
+                <label class="column-selector-item">
+                  <input 
+                    type="checkbox" 
+                    value="${col}" 
+                    ${this.visibleColumns.includes(col) ? 'checked' : ''}
+                    onchange="filterBuilder.toggleColumn('${col}')"
+                  />
+                  <span>${this.getColumnDisplayName(col)}</span>
+                </label>
+              `).join('')}
+            </div>
+          ` : ''}
+          <div class="column-selector-footer">
+            <button class="btn btn-sm" onclick="filterBuilder.resetColumns()">
+              Reset to Default
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  getColumnDisplayName(col) {
+    const displayNames = {
+      'name': 'Symbol',
+      'exchange': 'Exchange',
+      'open': 'Open',
+      'high': 'High',
+      'low': 'Low',
+      'close': 'Close',
+      'change': 'Change %',
+      'volume': 'Volume',
+      'market_cap_basic': 'Market Cap',
+      'relative_volume': 'Rel. Volume',
+      'SMA20': 'SMA20',
+      'RSI': 'RSI',
+      'ATR': 'ATR',
+      'BB.lower': 'BB Lower',
+      'BB.upper': 'BB Upper'
+    };
+    return displayNames[col] || col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  toggleColumnSelector() {
+    const dropdown = document.getElementById('columnSelectorDropdown');
+    if (dropdown) {
+      const isVisible = dropdown.style.display === 'block';
+      dropdown.style.display = isVisible ? 'none' : 'block';
+      
+      // Add click-outside handler when opening
+      if (!isVisible) {
+        setTimeout(() => {
+          this.addColumnSelectorClickOutside();
+        }, 0);
+      }
+    }
+  }
+
+  addColumnSelectorClickOutside() {
+    const handleClickOutside = (event) => {
+      const dropdown = document.getElementById('columnSelectorDropdown');
+      const button = document.getElementById('columnSelectorBtn');
+      
+      if (dropdown && button && 
+          !dropdown.contains(event.target) && 
+          !button.contains(event.target)) {
+        dropdown.style.display = 'none';
+        document.removeEventListener('mousedown', handleClickOutside);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+  }
+
+  toggleColumn(columnKey) {
+    if (this.visibleColumns.includes(columnKey)) {
+      this.visibleColumns = this.visibleColumns.filter(col => col !== columnKey);
+    } else {
+      // Add column to the right (end of array)
+      this.visibleColumns.push(columnKey);
+    }
+    
+    // Re-render the results with new columns
+    if (this.lastResults) {
+      this.displayResults(this.lastResults);
+    }
+  }
+
+  selectAllColumns() {
+    this.visibleColumns = [...this.allColumns];
+    
+    // Re-render the results with all columns
+    if (this.lastResults) {
+      this.displayResults(this.lastResults);
+    }
+  }
+
+  deselectAllAdditional() {
+    this.visibleColumns = this.defaultColumns.filter(col => this.allColumns.includes(col));
+    
+    // Re-render the results with default columns
+    if (this.lastResults) {
+      this.displayResults(this.lastResults);
+    }
+  }
+
+  resetColumns() {
+    this.visibleColumns = [...this.defaultColumns];
+    
+    // Re-render the results with default columns
+    if (this.lastResults) {
+      this.displayResults(this.lastResults);
+    }
+  }
+
+  // Column reordering functions
+  startColumnDrag(columnKey) {
+    this.draggedColumn = columnKey;
+  }
+
+  allowColumnDrop(event) {
+    event.preventDefault();
+  }
+
+  dropColumn(targetColumn) {
+    if (!this.draggedColumn || this.draggedColumn === targetColumn) {
+      this.draggedColumn = null;
+      return;
+    }
+
+    const draggedIndex = this.visibleColumns.indexOf(this.draggedColumn);
+    const targetIndex = this.visibleColumns.indexOf(targetColumn);
+    
+    // Remove dragged column and insert at target position
+    this.visibleColumns.splice(draggedIndex, 1);
+    this.visibleColumns.splice(targetIndex, 0, this.draggedColumn);
+    
+    this.draggedColumn = null;
+    
+    // Re-render the results with reordered columns
+    if (this.lastResults) {
+      this.displayResults(this.lastResults);
+    }
+  }
+
+  // Sorting function (if not already present)
+  sortTable(columnKey) {
+    if (!this.lastResults || !this.lastResults.data) return;
+    
+    // Toggle sort direction
+    if (this.sortColumn === columnKey) {
+      this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.sortColumn = columnKey;
+      this.sortDirection = 'asc';
+    }
+    
+    // Sort the data
+    this.lastResults.data.sort((a, b) => {
+      const aValue = a[columnKey];
+      const bValue = b[columnKey];
+      
+      if (aValue === null || aValue === undefined) return 1;
+      if (bValue === null || bValue === undefined) return -1;
+      
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return this.sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+      }
+      
+      const aStr = aValue.toString().toLowerCase();
+      const bStr = bValue.toString().toLowerCase();
+      
+      if (this.sortDirection === 'asc') {
+        return aStr < bStr ? -1 : aStr > bStr ? 1 : 0;
+      } else {
+        return aStr > bStr ? -1 : aStr < bStr ? 1 : 0;
+      }
+    });
+    
+    // Re-render
+    this.displayResults(this.lastResults);
   }
 
   createResultsTable(data, columns) {
@@ -645,7 +884,27 @@ class FilterBuilder {
       return '<div class="no-results">No results found</div>';
     }
 
-    const headerRow = columns.map(col => `<th>${col}</th>`).join('');
+    const headerRow = columns.map(col => {
+      const isSorted = this.sortColumn === col;
+      const sortIcon = isSorted 
+        ? (this.sortDirection === 'asc' ? ' ▲' : ' ▼')
+        : '';
+      
+      return `
+        <th 
+          draggable="true"
+          ondragstart="filterBuilder.startColumnDrag('${col}')"
+          ondragover="filterBuilder.allowColumnDrop(event)"
+          ondrop="filterBuilder.dropColumn('${col}')"
+          onclick="filterBuilder.sortTable('${col}')"
+          style="cursor: move; user-select: none;"
+          title="Click to sort, drag to reorder"
+        >
+          ${this.getColumnDisplayName(col)}${sortIcon}
+        </th>
+      `;
+    }).join('');
+    
     const dataRows = data.slice(0, 50).map(row => { // Limit to first 50 for performance
       const cells = columns.map(col => {
         let value = row[col];
