@@ -42,9 +42,6 @@ const Analysis = () => {
             Once you start saving filters, logging trades, and tracking symbols, we’ll aggregate that live data and surface win rates,
             risk metrics, and watchlist performance right here.
           </p>
-          <p className="text-gray-600 dark:text-gray-400">
-            Until then, there are no synthetic numbers—only your actual activity will populate this dashboard.
-          </p>
         </div>
       </Card>
     </div>

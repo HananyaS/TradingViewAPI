@@ -258,15 +258,38 @@ const Journal = () => {
       return {
         totalTrades: 0,
         closedTrades: 0,
-        winRate: 0,
-        avgPnL: 0,
-        totalPnL: 0,
+        openTrades: 0,
+        winRateClosed: 0,
+        winRateAll: 0,
+        avgPnLClosed: 0,
+        avgPnLAll: 0,
+        totalPnLClosed: 0,
+        totalPnLAll: 0,
+        pnlPercentClosed: 0,
+        pnlPercentAll: 0,
         bestTrade: null,
         worstTrade: null
       };
     }
 
+    // Calculate stats for closed trades only
     const closedPnLs = trades
+      .filter((trade) => {
+        // Check if trade has an exit_price (closed trade)
+        return trade.exit_price !== undefined && 
+               trade.exit_price !== null && 
+               trade.exit_price !== '' &&
+               !isNaN(Number(trade.exit_price));
+      })
+      .map((trade) => ({
+        trade,
+        pnl: calculatePnL(trade),
+        pnlPct: calculatePnLPercentage(trade)
+      }))
+      .filter(({ pnl }) => pnl !== null);
+
+    // Calculate stats for all trades (closed + open with live prices)
+    const allPnLs = trades
       .map((trade) => ({
         trade,
         pnl: calculatePnL(trade),
@@ -275,28 +298,59 @@ const Journal = () => {
       .filter(({ pnl }) => pnl !== null);
 
     const closedTrades = closedPnLs.length;
-    const wins = closedPnLs.filter(({ pnl }) => pnl > 0).length;
-    const totalPnL = closedPnLs.reduce((sum, { pnl }) => sum + pnl, 0);
-    const avgPnL = closedTrades ? totalPnL / closedTrades : 0;
-    const bestTrade = closedPnLs.reduce(
+    const openTrades = trades.length - closedTrades;
+    const totalTrades = trades.length;
+
+    // Closed trades stats
+    const winsClosed = closedPnLs.filter(({ pnl }) => pnl > 0).length;
+    const totalPnLClosed = closedPnLs.reduce((sum, { pnl }) => sum + pnl, 0);
+    const totalCostClosed = closedPnLs.reduce((sum, { trade }) => {
+      const entry = Number(trade.entry_price ?? trade.price);
+      const qty = Number(trade.quantity);
+      return sum + (entry * qty);
+    }, 0);
+    const avgPnLClosed = closedTrades ? totalPnLClosed / closedTrades : 0;
+    const winRateClosed = closedTrades ? (winsClosed / closedTrades) * 100 : 0;
+    const pnlPercentClosed = totalCostClosed > 0 ? (totalPnLClosed / totalCostClosed) * 100 : 0;
+
+    // All trades stats (closed + open)
+    const winsAll = allPnLs.filter(({ pnl }) => pnl > 0).length;
+    const totalPnLAll = allPnLs.reduce((sum, { pnl }) => sum + pnl, 0);
+    const totalCostAll = allPnLs.reduce((sum, { trade }) => {
+      const entry = Number(trade.entry_price ?? trade.price);
+      const qty = Number(trade.quantity);
+      return sum + (entry * qty);
+    }, 0);
+    const avgPnLAll = totalTrades ? totalPnLAll / totalTrades : 0;
+    const winRateAll = totalTrades ? (winsAll / totalTrades) * 100 : 0;
+    const pnlPercentAll = totalCostAll > 0 ? (totalPnLAll / totalCostAll) * 100 : 0;
+
+    // Best and worst trades (from all trades)
+    const bestTrade = allPnLs.reduce(
       (best, current) => (best === null || current.pnl > best.pnl ? current : best),
       null
     );
-    const worstTrade = closedPnLs.reduce(
+    const worstTrade = allPnLs.reduce(
       (worst, current) => (worst === null || current.pnl < worst.pnl ? current : worst),
       null
     );
 
     return {
-      totalTrades: trades.length,
+      totalTrades,
       closedTrades,
-      winRate: closedTrades ? (wins / closedTrades) * 100 : 0,
-      avgPnL,
-      totalPnL,
+      openTrades,
+      winRateClosed,
+      winRateAll,
+      avgPnLClosed,
+      avgPnLAll,
+      totalPnLClosed,
+      totalPnLAll,
+      pnlPercentClosed,
+      pnlPercentAll,
       bestTrade,
       worstTrade
     };
-  }, [trades]);
+  }, [trades, priceLookup]);
 
   if (loading) {
     return (
@@ -692,46 +746,105 @@ const Journal = () => {
           title="Portfolio & Trade Stats"
           size="lg"
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            {/* Total Trades */}
             <Card>
               <p className="text-sm text-gray-500 dark:text-gray-400">Total Trades</p>
               <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.totalTrades}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {stats.closedTrades} closed / {stats.totalTrades - stats.closedTrades} open
+                {stats.closedTrades} closed / {stats.openTrades} open
               </p>
             </Card>
-            <Card>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Win Rate</p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                {stats.closedTrades ? `${stats.winRate.toFixed(1)}%` : '--'}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Closed positions only</p>
-            </Card>
-            <Card>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Total P&L</p>
-              <p
-                className={`text-3xl font-bold ${
-                  stats.totalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                }`}
-              >
-                {stats.closedTrades ? `${stats.totalPnL >= 0 ? '+' : ''}$${stats.totalPnL.toFixed(2)}` : '--'}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Closed trades cumulative</p>
-            </Card>
-            <Card>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Average P&L</p>
-              <p
-                className={`text-3xl font-bold ${
-                  stats.avgPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                }`}
-              >
-                {stats.closedTrades ? `${stats.avgPnL >= 0 ? '+' : ''}$${stats.avgPnL.toFixed(2)}` : '--'}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Per closed trade</p>
-            </Card>
+
+            {/* Win Rate - Side by Side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Win Rate (Closed Only)</p>
+                <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                  {stats.closedTrades > 0 ? `${stats.winRateClosed.toFixed(1)}%` : '--'}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Based on {stats.closedTrades} closed trades</p>
+              </Card>
+              
+              <Card>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Win Rate (All Trades)</p>
+                <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                  {stats.totalTrades > 0 ? `${stats.winRateAll.toFixed(1)}%` : '--'}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Including {stats.openTrades} open trades (live prices)</p>
+              </Card>
+            </div>
+            
+            {/* Total P&L - Side by Side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Total P&L (Closed Only)</p>
+                <p
+                  className={`text-3xl font-bold ${
+                    stats.totalPnLClosed >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  }`}
+                >
+                  {stats.closedTrades > 0 ? `${stats.totalPnLClosed >= 0 ? '+' : ''}$${stats.totalPnLClosed.toFixed(2)}` : '--'}
+                </p>
+                {stats.closedTrades > 0 && (
+                  <p className={`text-lg font-semibold mt-1 ${
+                    stats.pnlPercentClosed >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {stats.pnlPercentClosed >= 0 ? '+' : ''}{stats.pnlPercentClosed.toFixed(2)}%
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">From {stats.closedTrades} closed trades</p>
+              </Card>
+              
+              <Card>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Total P&L (All Trades)</p>
+                <p
+                  className={`text-3xl font-bold ${
+                    stats.totalPnLAll >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  }`}
+                >
+                  {stats.totalTrades > 0 ? `${stats.totalPnLAll >= 0 ? '+' : ''}$${stats.totalPnLAll.toFixed(2)}` : '--'}
+                </p>
+                {stats.totalTrades > 0 && (
+                  <p className={`text-lg font-semibold mt-1 ${
+                    stats.pnlPercentAll >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {stats.pnlPercentAll >= 0 ? '+' : ''}{stats.pnlPercentAll.toFixed(2)}%
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Including {stats.openTrades} open trades (live prices)</p>
+              </Card>
+            </div>
+            
+            {/* Average P&L - Side by Side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Average P&L (Closed Only)</p>
+                <p
+                  className={`text-3xl font-bold ${
+                    stats.avgPnLClosed >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  }`}
+                >
+                  {stats.closedTrades > 0 ? `${stats.avgPnLClosed >= 0 ? '+' : ''}$${stats.avgPnLClosed.toFixed(2)}` : '--'}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Per closed trade</p>
+              </Card>
+              
+              <Card>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Average P&L (All Trades)</p>
+                <p
+                  className={`text-3xl font-bold ${
+                    stats.avgPnLAll >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  }`}
+                >
+                  {stats.totalTrades > 0 ? `${stats.avgPnLAll >= 0 ? '+' : ''}$${stats.avgPnLAll.toFixed(2)}` : '--'}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Per trade (including open with live prices)</p>
+              </Card>
+            </div>
           </div>
 
-          {stats.closedTrades > 0 && (
+          {stats.bestTrade || stats.worstTrade ? (
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Best Trade</p>
@@ -742,18 +855,24 @@ const Journal = () => {
                       <span className="text-sm text-gray-500">
                         ({stats.bestTrade.trade.type || stats.bestTrade.trade.direction || 'long'})
                       </span>
+                      {!stats.bestTrade.trade.exit_price && (
+                        <span className="text-xs text-blue-600 dark:text-blue-400 ml-2">(Open)</span>
+                      )}
                     </p>
                     <p className="text-green-600 dark:text-green-400 font-semibold">
                       +${stats.bestTrade.pnl.toFixed(2)} (
                       {stats.bestTrade.pnlPct !== null ? `${stats.bestTrade.pnlPct.toFixed(2)}%` : '--'})
                     </p>
+                    {!stats.bestTrade.trade.exit_price && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Using live price</p>
+                    )}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">No closed trades yet.</p>
+                  <p className="text-sm text-gray-500">No trades yet.</p>
                 )}
               </Card>
               <Card>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Toughest Trade</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Worst Trade</p>
                 {stats.worstTrade ? (
                   <div>
                     <p className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -761,18 +880,24 @@ const Journal = () => {
                       <span className="text-sm text-gray-500">
                         ({stats.worstTrade.trade.type || stats.worstTrade.trade.direction || 'long'})
                       </span>
+                      {!stats.worstTrade.trade.exit_price && (
+                        <span className="text-xs text-blue-600 dark:text-blue-400 ml-2">(Open)</span>
+                      )}
                     </p>
                     <p className="text-red-600 dark:text-red-400 font-semibold">
                       {stats.worstTrade.pnl >= 0 ? '+' : ''}${stats.worstTrade.pnl.toFixed(2)} (
                       {stats.worstTrade.pnlPct !== null ? `${stats.worstTrade.pnlPct.toFixed(2)}%` : '--'})
                     </p>
+                    {!stats.worstTrade.trade.exit_price && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Using live price</p>
+                    )}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">No closed trades yet.</p>
+                  <p className="text-sm text-gray-500">No trades yet.</p>
                 )}
               </Card>
             </div>
-          )}
+          ) : null}
 
           <div className="flex justify-end mt-6">
             <Button onClick={() => setShowStatsModal(false)} variant="outline">
@@ -799,4 +924,5 @@ const Journal = () => {
 };
 
 export default Journal;
+
 

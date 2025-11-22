@@ -506,28 +506,35 @@ const NewsSection = ({
                       <ClockIcon className="h-3 w-3" />
                       <span>{formatTime(story.time)}</span>
                     </div>
-                    {story.tickers && story.tickers.length > 0 && (
+                    {/* Tickers - Always show if available, make more prominent */}
+                    {story.tickers && story.tickers.length > 0 ? (
                       <div className="flex items-center space-x-1 flex-wrap gap-1">
-                        {story.tickers.slice(0, 3).map((ticker) => (
+                        {story.tickers.slice(0, 5).map((ticker) => (
                           <span
                             key={ticker}
-                            className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            className={`px-2 py-0.5 rounded text-xs font-semibold ${
                               theme === 'dark'
-                                ? 'bg-blue-900/30 text-blue-400'
-                                : 'bg-blue-100 text-blue-700'
+                                ? 'bg-blue-900/40 text-blue-300 border border-blue-700/50'
+                                : 'bg-blue-100 text-blue-700 border border-blue-200'
                             }`}
                           >
                             {ticker.toUpperCase()}
                           </span>
                         ))}
-                        {story.tickers.length > 3 && (
-                          <span className={`text-xs ${
-                            theme === 'dark' ? 'text-gray-500' : 'text-gray-500'
+                        {story.tickers.length > 5 && (
+                          <span className={`text-xs font-medium ${
+                            theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
                           }`}>
-                            +{story.tickers.length - 3}
+                            +{story.tickers.length - 5} more
                           </span>
                         )}
                       </div>
+                    ) : (
+                      <span className={`text-xs italic ${
+                        theme === 'dark' ? 'text-gray-600' : 'text-gray-400'
+                      }`}>
+                        No tickers
+                      </span>
                     )}
                   </div>
                 </div>
