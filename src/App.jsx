@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { NewsProvider } from './contexts/NewsContext';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './pages/LoginPage';
 import Home from './pages/Home';
@@ -10,6 +11,7 @@ import Watchlist from './pages/Watchlist';
 import Journal from './pages/Journal';
 import Profile from './pages/Profile';
 import Analysis from './pages/Analysis';
+import News from './pages/News';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -76,6 +78,7 @@ function AppRoutes() {
         <Route index element={<Home />} />
         <Route path="watchlist" element={<Watchlist />} />
         <Route path="journal" element={<Journal />} />
+        <Route path="news" element={<News />} />
         <Route path="analysis" element={<Analysis />} />
         <Route path="profile" element={<Profile />} />
         <Route path="settings" element={<Profile />} />
@@ -93,10 +96,11 @@ function App() {
       <Router>
         <ThemeProvider>
           <AuthProvider>
-            <AppRoutes />
-            
-            {/* Toast Notifications */}
-            <Toaster
+            <NewsProvider>
+              <AppRoutes />
+              
+              {/* Toast Notifications */}
+              <Toaster
               position="top-right"
               toastOptions={{
                 duration: 3000,
@@ -120,6 +124,7 @@ function App() {
                 },
               }}
             />
+            </NewsProvider>
           </AuthProvider>
         </ThemeProvider>
       </Router>

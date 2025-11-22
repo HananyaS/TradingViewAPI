@@ -5,9 +5,11 @@ import Button from '../components/common/Button';
 import EmptyState from '../components/common/EmptyState';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Modal from '../components/common/Modal';
+import NewsSection from '../components/NewsSection';
 import { toast } from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { useLivePrices } from '../hooks/useLivePrices';
+import { useNews } from '../contexts/NewsContext';
 import {
   DocumentTextIcon,
   PlusIcon,
@@ -39,6 +41,13 @@ const Journal = () => {
   const { prices: priceLookup, loading: priceLoading } = useLivePrices(
     trades.map((trade) => trade.symbol)
   );
+
+  // Get unified news data
+  const { allNews } = useNews();
+  const journalSymbols = [...new Set(trades.map((trade) => trade.symbol).filter(Boolean))];
+  
+  // Extract ticker news from unified data
+  const tickerNews = allNews?.tickers || {};
 
   const normalizeTrade = (trade) => ({
     ...trade,
@@ -319,14 +328,14 @@ const Journal = () => {
               View Stats
             </Button>
           )}
-          <Button
-            onClick={() => setShowAddModal(true)}
-            variant="primary"
-            icon={<PlusIcon className="h-5 w-5" />}
+        <Button
+          onClick={() => setShowAddModal(true)}
+          variant="primary"
+          icon={<PlusIcon className="h-5 w-5" />}
             className="w-full sm:w-auto"
-          >
-            Add Trade
-          </Button>
+        >
+          Add Trade
+        </Button>
         </div>
       </div>
 
@@ -371,8 +380,8 @@ const Journal = () => {
           <div className="overflow-x-auto w-full">
             <div className="inline-block min-w-full align-middle">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 w-full">
-                <thead className="bg-gray-50 dark:bg-gray-800">
-                  <tr>
+              <thead className="bg-gray-50 dark:bg-gray-800">
+                <tr>
                     <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Date</th>
                     <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Symbol</th>
                     <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell whitespace-nowrap">Type</th>
@@ -381,8 +390,8 @@ const Journal = () => {
                     <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell whitespace-nowrap">Qty</th>
                     <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">P&L</th>
                     <th className="px-2 sm:px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Actions</th>
-                  </tr>
-                </thead>
+                </tr>
+              </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {trades.map((trade) => {
                   const pnl = calculatePnL(trade);
@@ -445,13 +454,13 @@ const Journal = () => {
                           >
                             <PencilSquareIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                           </button>
-                          <button
-                            onClick={() => deleteTrade(trade.id)}
+                        <button
+                          onClick={() => deleteTrade(trade.id)}
                             className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-1"
                             title="Delete trade"
-                          >
+                        >
                             <TrashIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-                          </button>
+                        </button>
                         </div>
                       </td>
                     </tr>
@@ -771,6 +780,19 @@ const Journal = () => {
             </Button>
           </div>
         </Modal>
+      )}
+
+      {/* News Section - Only ticker-specific news */}
+      {trades.length > 0 && (
+        <NewsSection
+          symbols={journalSymbols}
+          title="Trading Journal News"
+          maxStories={30}
+          showTickerSelection={true}
+          showStoryTypes={false}
+          autoRefresh={false} // Batch hook handles refresh
+          preloadedStories={tickerNews.all_stories || null}
+        />
       )}
     </div>
   );

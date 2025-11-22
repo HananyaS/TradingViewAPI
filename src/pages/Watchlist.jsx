@@ -4,9 +4,11 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import EmptyState from '../components/common/EmptyState';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import NewsSection from '../components/NewsSection';
 import { toast } from 'react-hot-toast';
 import { fetchWithAuth } from '../utils/api';
 import { useLivePrices } from '../hooks/useLivePrices';
+import { useNews } from '../contexts/NewsContext';
 import {
   BookmarkIcon,
   PlusIcon,
@@ -29,6 +31,13 @@ const Watchlist = () => {
   const { prices: priceLookup, loading: priceLoading } = useLivePrices(
     watchlist.map((item) => item.symbol)
   );
+
+  // Get unified news data
+  const { allNews } = useNews();
+  const watchlistSymbols = watchlist.map((item) => item.symbol).filter(Boolean);
+  
+  // Extract ticker news from unified data
+  const tickerNews = allNews?.tickers || {};
 
   useEffect(() => {
     loadWatchlist();
@@ -319,6 +328,19 @@ const Watchlist = () => {
             );
           })}
         </div>
+      )}
+
+      {/* News Section - Only ticker-specific news */}
+      {watchlist.length > 0 && (
+        <NewsSection
+          symbols={watchlistSymbols}
+          title="Watchlist News"
+          maxStories={30}
+          showTickerSelection={true}
+          showStoryTypes={false}
+          autoRefresh={false} // Batch hook handles refresh
+          preloadedStories={tickerNews.all_stories || null}
+        />
       )}
     </div>
   );

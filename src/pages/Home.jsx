@@ -6,6 +6,7 @@ import ResultsTable from '../components/ResultsTable';
 import SavedQueries from '../components/SavedQueries';
 import QuerySaveModal from '../components/QuerySaveModal';
 import QueryLoadModal from '../components/QueryLoadModal';
+import NewsSection from '../components/NewsSection';
 import Button from '../components/common/Button';
 import Card from '../components/common/Card';
 import { toast } from 'react-hot-toast';
@@ -16,7 +17,8 @@ import {
   BookmarkIcon,
   SparklesIcon,
   AdjustmentsHorizontalIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  NewspaperIcon
 } from '@heroicons/react/24/outline';
 
 const Home = () => {
@@ -28,6 +30,7 @@ const Home = () => {
   const [savedQueries, setSavedQueries] = useState([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
+  const [showResultsNews, setShowResultsNews] = useState(false);
   
   // Load saved queries on mount
   useEffect(() => {
@@ -354,6 +357,13 @@ const Home = () => {
                         <div className="text-3xl font-bold">{results.length}</div>
                         <div className="text-xs opacity-90">Stocks Found</div>
                       </div>
+                      <Button
+                        onClick={() => setShowResultsNews(!showResultsNews)}
+                        variant="secondary"
+                        icon={<NewspaperIcon className="h-5 w-5" />}
+                      >
+                        {showResultsNews ? 'Hide News' : 'Get News'}
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -368,6 +378,21 @@ const Home = () => {
                 />
               </div>
             </Card>
+          )}
+
+          {/* Results News Section */}
+          {showResultsNews && results.length > 0 && (
+            <NewsSection
+              symbols={results.map((r) => {
+                // Extract ticker from results - could be 'name' or 'symbol' field
+                return (r.name || r.symbol || '').toString().toUpperCase();
+              }).filter(Boolean)}
+              title="Strategy Results News"
+              maxStories={30}
+              showTickerSelection={true}
+              showStoryTypes={false}
+              autoRefresh={false}
+            />
           )}
         </div>
       </div>

@@ -440,6 +440,460 @@ class MongoDBManager:
         except Exception as e:
             print(f"Error clearing old price cache: {e}")
 
+    # News cache methods - per symbol caching
+    def get_symbol_news_cache(self, symbol):
+        """Get cached news for a specific symbol (global cache, not per user)"""
+        try:
+            if self.client is None:
+                return None
+            
+            news_collection = self.db.news_cache
+            symbol_upper = symbol.upper().strip()
+            
+            cache_doc = news_collection.find_one({
+                'symbol': symbol_upper,
+                'type': 'symbol'
+            })
+            
+            if cache_doc:
+                # Check if cache is still valid (less than 1 minute old)
+                from datetime import timedelta
+                cache_age = datetime.utcnow() - cache_doc['cached_at']
+                if cache_age < timedelta(minutes=1):
+                    return cache_doc.get('stories', [])
+                else:
+                    # Cache expired, delete it
+                    news_collection.delete_one({'_id': cache_doc['_id']})
+            
+            return None
+        except Exception as e:
+            print(f"Error getting symbol news cache for {symbol}: {e}")
+            return None
+
+    def set_symbol_news_cache(self, symbol, stories):
+        """Cache news stories for a specific symbol (global cache)"""
+        try:
+            if self.client is None:
+                return
+            
+            news_collection = self.db.news_cache
+            symbol_upper = symbol.upper().strip()
+            
+            # Create or update cache document
+            cache_doc = {
+                'symbol': symbol_upper,
+                'type': 'symbol',
+                'stories': stories,
+                'cached_at': datetime.utcnow()
+            }
+            
+            # Upsert the document
+            news_collection.update_one(
+                {'symbol': symbol_upper, 'type': 'symbol'},
+                {'$set': cache_doc},
+                upsert=True
+            )
+            print(f"[news cache] Cached {len(stories)} stories for symbol {symbol_upper}")
+        except Exception as e:
+            print(f"Error setting symbol news cache for {symbol}: {e}")
+
+    def get_multiple_symbols_news_cache(self, symbols):
+        """Get cached news for multiple symbols, return dict of symbol -> stories"""
+        try:
+            if self.client is None:
+                return {}
+            
+            news_collection = self.db.news_cache
+            symbols_upper = [s.upper().strip() for s in symbols if s and s.strip()]
+            
+            if not symbols_upper:
+                return {}
+            
+            # Find all cached symbols
+            cache_docs = news_collection.find({
+                'symbol': {'$in': symbols_upper},
+                'type': 'symbol'
+            })
+            
+            cached_results = {}
+            from datetime import timedelta
+            current_time = datetime.utcnow()
+            
+            for doc in cache_docs:
+                symbol = doc['symbol']
+                cache_age = current_time - doc['cached_at']
+                
+                if cache_age < timedelta(minutes=1):
+                    cached_results[symbol] = doc.get('stories', [])
+                else:
+                    # Cache expired, delete it
+                    news_collection.delete_one({'_id': doc['_id']})
+            
+            return cached_results
+        except Exception as e:
+            print(f"Error getting multiple symbols news cache: {e}")
+            return {}
+
+    # Legacy methods for user-based cache (for story types)
+    def get_news_cache(self, user_id, cache_key):
+        """Get cached news for a user and cache key (for story types)"""
+        try:
+            if self.client is None:
+                return None
+            
+            news_collection = self.db.news_cache
+            cache_doc = news_collection.find_one({
+                'user_id': user_id,
+                'cache_key': cache_key,
+                'type': 'user_query'
+            })
+            
+            if cache_doc:
+                # Check if cache is still valid (less than 1 minute old)
+                from datetime import timedelta
+                cache_age = datetime.utcnow() - cache_doc['cached_at']
+                if cache_age < timedelta(minutes=1):
+                    return cache_doc.get('stories', [])
+                else:
+                    # Cache expired, delete it
+                    news_collection.delete_one({'_id': cache_doc['_id']})
+            
+            return None
+        except Exception as e:
+            print(f"Error getting news cache: {e}")
+            return None
+
+    def set_news_cache(self, user_id, cache_key, stories):
+        """Cache news stories for a user (for story types)"""
+        try:
+            if self.client is None:
+                return
+            
+            news_collection = self.db.news_cache
+            
+            # Create or update cache document
+            cache_doc = {
+                'user_id': user_id,
+                'cache_key': cache_key,
+                'type': 'user_query',
+                'stories': stories,
+                'cached_at': datetime.utcnow()
+            }
+            
+            # Upsert the document
+            news_collection.update_one(
+                {'user_id': user_id, 'cache_key': cache_key, 'type': 'user_query'},
+                {'$set': cache_doc},
+                upsert=True
+            )
+        except Exception as e:
+            print(f"Error setting news cache: {e}")
+
+    def get_user_last_news_fetch(self, user_id):
+        """Get the last time a user fetched news (for rate limiting)"""
+        try:
+            if self.client is None:
+                return None
+            
+            news_collection = self.db.news_cache
+            
+            # Find the most recent cache entry for this user (any type)
+            latest = news_collection.find_one(
+                {'user_id': user_id},
+                sort=[('cached_at', -1)]
+            )
+            
+            if latest:
+                return latest.get('cached_at')
+            return None
+        except Exception as e:
+            print(f"Error getting user last news fetch: {e}")
+            return None
+
+    # Batch news cache methods with index
+    def get_news_cache_index(self, user_id, cache_type):
+        """Get cache index entry for fast lookup (cache_type: 'tickers' or 'story_types')"""
+        try:
+            if self.client is None:
+                return None
+            
+            index_collection = self.db.news_cache_index
+            index_doc = index_collection.find_one({
+                'user_id': user_id,
+                'cache_type': cache_type
+            })
+            
+            if index_doc:
+                # Check if cache is still valid (less than 2 minutes old for unified, 1 minute for others)
+                from datetime import timedelta
+                cache_age = datetime.utcnow() - index_doc['cached_at']
+                max_age = timedelta(minutes=2) if cache_type == 'unified' else timedelta(minutes=1)
+                if cache_age < max_age:
+                    return index_doc
+                else:
+                    # Cache expired, delete index and batch data
+                    index_collection.delete_one({'_id': index_doc['_id']})
+                    batch_collection = self.db.news_cache_batch
+                    batch_collection.delete_one({
+                        'user_id': user_id,
+                        'cache_type': cache_type
+                    })
+            
+            return None
+        except Exception as e:
+            print(f"Error getting news cache index: {e}")
+            return None
+
+    def get_news_cache_batch(self, user_id, cache_type):
+        """Get cached batch news data"""
+        try:
+            if self.client is None:
+                return None
+            
+            # Check index first
+            index = self.get_news_cache_index(user_id, cache_type)
+            if not index:
+                return None
+            
+            batch_collection = self.db.news_cache_batch
+            batch_doc = batch_collection.find_one({
+                'user_id': user_id,
+                'cache_type': cache_type
+            })
+            
+            if batch_doc:
+                return batch_doc.get('data', {})
+            
+            return None
+        except Exception as e:
+            print(f"Error getting news cache batch: {e}")
+            return None
+
+    def check_tickers_in_cache(self, user_id, requested_tickers):
+        """Check if all requested tickers are already in the cache"""
+        try:
+            if self.client is None:
+                return False, None
+            
+            # Normalize requested tickers
+            requested_set = set([t.upper().strip() for t in requested_tickers if t and t.strip()])
+            if not requested_set:
+                return False, None
+            
+            # Check if we have cached batch data
+            cached_batch = self.get_news_cache_batch(user_id, 'tickers')
+            if not cached_batch:
+                return False, None
+            
+            # Get cached tickers from the batch data
+            cached_tickers = set()
+            if isinstance(cached_batch, dict):
+                # Check if it has a 'tickers' field
+                if 'tickers' in cached_batch:
+                    cached_tickers = set([t.upper().strip() for t in cached_batch['tickers'] if t])
+                # Also check 'by_ticker' keys
+                elif 'by_ticker' in cached_batch:
+                    cached_tickers = set([t.upper().strip() for t in cached_batch['by_ticker'].keys() if t])
+            
+            # Check if all requested tickers are in cache
+            missing_tickers = requested_set - cached_tickers
+            if not missing_tickers:
+                # All tickers are in cache
+                return True, cached_batch
+            else:
+                # Some tickers are missing
+                return False, cached_batch if cached_tickers else None
+            
+        except Exception as e:
+            print(f"Error checking tickers in cache: {e}")
+            return False, None
+
+    def check_story_types_in_cache(self, user_id, requested_story_types):
+        """Check if all requested story types are already in the cache"""
+        try:
+            if self.client is None:
+                return False, None
+            
+            # Normalize requested story types
+            requested_set = set([st.strip() for st in requested_story_types if st and st.strip()])
+            if not requested_set:
+                return False, None
+            
+            # Check if we have cached batch data
+            cached_batch = self.get_news_cache_batch(user_id, 'story_types')
+            if not cached_batch:
+                return False, None
+            
+            # Get cached story types from the batch data
+            if isinstance(cached_batch, dict):
+                cached_story_types = set([st.strip() for st in cached_batch.keys() if st])
+                
+                # Check if all requested story types are in cache
+                missing_types = requested_set - cached_story_types
+                if not missing_types:
+                    # All story types are in cache
+                    return True, cached_batch
+                else:
+                    # Some story types are missing
+                    return False, cached_batch if cached_story_types else None
+            
+            return False, None
+            
+        except Exception as e:
+            print(f"Error checking story types in cache: {e}")
+            return False, None
+
+    def set_news_cache_batch(self, user_id, cache_type, data, metadata=None):
+        """Cache batch news data with index for fast lookup"""
+        try:
+            if self.client is None:
+                return
+            
+            from datetime import timedelta
+            cached_at = datetime.utcnow()
+            
+            # Update index
+            index_collection = self.db.news_cache_index
+            index_doc = {
+                'user_id': user_id,
+                'cache_type': cache_type,
+                'cached_at': cached_at,
+                'metadata': metadata or {}
+            }
+            
+            index_collection.update_one(
+                {'user_id': user_id, 'cache_type': cache_type},
+                {'$set': index_doc},
+                upsert=True
+            )
+            
+            # Update batch data
+            batch_collection = self.db.news_cache_batch
+            batch_doc = {
+                'user_id': user_id,
+                'cache_type': cache_type,
+                'data': data,
+                'cached_at': cached_at
+            }
+            
+            batch_collection.update_one(
+                {'user_id': user_id, 'cache_type': cache_type},
+                {'$set': batch_doc},
+                upsert=True
+            )
+            
+            print(f"[news cache] Cached batch data for user {user_id}, type: {cache_type}")
+        except Exception as e:
+            print(f"Error setting news cache batch: {e}")
+
+    def get_unified_news_cache(self, user_id):
+        """Get unified news cache (all tickers + all story types)"""
+        try:
+            if self.client is None:
+                return None
+            
+            # Check index first
+            index = self.get_news_cache_index(user_id, 'unified')
+            if not index:
+                return None
+            
+            batch_collection = self.db.news_cache_batch
+            batch_doc = batch_collection.find_one({
+                'user_id': user_id,
+                'cache_type': 'unified'
+            })
+            
+            if batch_doc:
+                return batch_doc.get('data', {})
+            
+            return None
+        except Exception as e:
+            print(f"Error getting unified news cache: {e}")
+            return None
+
+    def set_unified_news_cache(self, user_id, data, metadata=None):
+        """Cache unified news data (all tickers + all story types)"""
+        try:
+            if self.client is None:
+                return
+            
+            from datetime import timedelta
+            cached_at = datetime.utcnow()
+            
+            # Update index
+            index_collection = self.db.news_cache_index
+            index_doc = {
+                'user_id': user_id,
+                'cache_type': 'unified',
+                'cached_at': cached_at,
+                'metadata': metadata or {}
+            }
+            
+            index_collection.update_one(
+                {'user_id': user_id, 'cache_type': 'unified'},
+                {'$set': index_doc},
+                upsert=True
+            )
+            
+            # Update batch data
+            batch_collection = self.db.news_cache_batch
+            batch_doc = {
+                'user_id': user_id,
+                'cache_type': 'unified',
+                'data': data,
+                'cached_at': cached_at
+            }
+            
+            batch_collection.update_one(
+                {'user_id': user_id, 'cache_type': 'unified'},
+                {'$set': batch_doc},
+                upsert=True
+            )
+            
+            print(f"[news cache] Cached unified news data for user {user_id}")
+        except Exception as e:
+            print(f"Error setting unified news cache: {e}")
+
+    def clear_expired_news_cache(self):
+        """Clear expired news cache entries (older than 1 minute)"""
+        try:
+            if self.client is None:
+                return
+            
+            from datetime import timedelta
+            cutoff_time = datetime.utcnow() - timedelta(minutes=1)
+            
+            # Clear expired index entries
+            index_collection = self.db.news_cache_index
+            expired_indices = index_collection.find({
+                'cached_at': {'$lt': cutoff_time}
+            })
+            
+            expired_user_types = []
+            for index_doc in expired_indices:
+                expired_user_types.append({
+                    'user_id': index_doc['user_id'],
+                    'cache_type': index_doc['cache_type']
+                })
+            
+            # Delete expired indices
+            index_collection.delete_many({
+                'cached_at': {'$lt': cutoff_time}
+            })
+            
+            # Delete corresponding batch data
+            if expired_user_types:
+                batch_collection = self.db.news_cache_batch
+                for user_type in expired_user_types:
+                    batch_collection.delete_one({
+                        'user_id': user_type['user_id'],
+                        'cache_type': user_type['cache_type']
+                    })
+            
+            print(f"[news cache] Cleared {len(expired_user_types)} expired cache entries")
+        except Exception as e:
+            print(f"Error clearing expired news cache: {e}")
+
     # Trades collection methods
     def _format_trade_doc(self, trade):
         """Normalize trade document for API responses"""

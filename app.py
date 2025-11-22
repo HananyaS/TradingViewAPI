@@ -7,6 +7,8 @@ import pandas as pd
 import math
 import urllib.parse
 from bson import ObjectId
+import requests
+import time
 from screener_service import query_by_params, fetch_symbol_quotes
 from mongodb_config import mongodb_manager
 from google_oauth import create_oauth_flow, login_required, get_user_info, verify_google_token
@@ -46,7 +48,7 @@ else:
     # Development: Allow requests from React dev server
     CORS(app, supports_credentials=True, origins=['http://localhost:5173'])
 
-# Configure session cookie settings
+# Configure session cookie settings 
 if IS_PRODUCTION:
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE'] = True  # HTTPS in production
@@ -827,6 +829,818 @@ def fetch_live_prices():
     except Exception as e:
         print(f"Error fetching live prices: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+
+# Rate limiting for TickerTick API (10 requests per minute per IP)
+_tickertick_rate_limit = {}
+
+def _check_tickertick_rate_limit():
+    """Check if we can make a request to TickerTick API"""
+    global _tickertick_rate_limit
+    current_time = time.time()
+    
+    # Clean old entries (older than 1 minute)
+    _tickertick_rate_limit = {
+        ip: timestamps 
+        for ip, timestamps in _tickertick_rate_limit.items()
+        if any(ts > current_time - 60 for ts in timestamps)
+    }
+    
+    # Get client IP
+    client_ip = request.remote_addr or 'unknown'
+    
+    # Get timestamps for this IP
+    timestamps = _tickertick_rate_limit.get(client_ip, [])
+    
+    # Remove timestamps older than 1 minute
+    timestamps = [ts for ts in timestamps if ts > current_time - 60]
+    
+    # Check if we've exceeded the limit
+    if len(timestamps) >= 10:
+        return False, 60 - (current_time - min(timestamps))
+    
+    # Add current timestamp
+    timestamps.append(current_time)
+    _tickertick_rate_limit[client_ip] = timestamps
+    
+    return True, 0
+
+def _check_user_news_rate_limit(user_id):
+    """Check if user can fetch news (once per minute per user)"""
+    try:
+        last_fetch = mongodb_manager.get_user_last_news_fetch(user_id)
+        if last_fetch:
+            from datetime import timedelta
+            time_since_last = datetime.utcnow() - last_fetch
+            if time_since_last < timedelta(minutes=1):
+                wait_seconds = 60 - int(time_since_last.total_seconds())
+                return False, wait_seconds
+        return True, 0
+    except Exception as e:
+        print(f"[news] Error checking user rate limit: {e}")
+        return True, 0
+
+def _build_tickertick_query(tickers=None, story_type=None):
+    """Build TickerTick query string from list of tickers or story type"""
+    if story_type:
+        # Story type query (e.g., T:curated, T:market)
+        return f"T:{story_type}"
+    
+    if not tickers:
+        return None
+    
+    # Normalize tickers (uppercase, remove duplicates)
+    normalized_tickers = list(set([t.upper().strip() for t in tickers if t and t.strip()]))
+    
+    if not normalized_tickers:
+        return None
+    
+    if len(normalized_tickers) == 1:
+        # Single ticker: use tt:ticker format
+        return f"tt:{normalized_tickers[0].lower()}"
+    else:
+        # Multiple tickers: use (or tt:ticker1 tt:ticker2 ...) format
+        ticker_terms = " ".join([f"tt:{t.lower()}" for t in normalized_tickers])
+        return f"(or {ticker_terms})"
+
+def _generate_cache_key(tickers=None, story_type=None):
+    """Generate a cache key from tickers or story type"""
+    if story_type:
+        return f"story_type:{story_type}"
+    if tickers:
+        normalized = sorted([t.upper().strip() for t in tickers if t and t.strip()])
+        return f"tickers:{','.join(normalized)}"
+    return None
+
+@app.route('/api/news/unified', methods=['POST'])
+@login_required
+def get_unified_news():
+    """Fetch ALL news data in one unified request: all tickers + all story types"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        user_id = user_info['user_id']
+        
+        data = request.get_json() or {}
+        use_cache = data.get('use_cache', True)
+        
+        # Check cache FIRST (before rate limits)
+        if use_cache:
+            cached_data = mongodb_manager.get_unified_news_cache(user_id)
+            if cached_data:
+                print(f"[news unified] Returning cached unified news data")
+                return jsonify({
+                    'success': True,
+                    'data': cached_data,
+                    'cached': True
+                })
+        
+        # Only check rate limits if we need to make API calls
+        # Check user rate limit
+        can_fetch, wait_time = _check_user_news_rate_limit(user_id)
+        if not can_fetch:
+            return jsonify({
+                'success': False,
+                'error': f'Please wait {wait_time} seconds before refreshing news.',
+                'rate_limited': True,
+                'wait_time': wait_time
+            }), 429
+        
+        # Check IP rate limit
+        can_request, ip_wait_time = _check_tickertick_rate_limit()
+        if not can_request:
+            return jsonify({
+                'success': False,
+                'error': f'Rate limit exceeded. Please wait {int(ip_wait_time)} seconds.',
+                'rate_limited': True,
+                'wait_time': int(ip_wait_time)
+            }), 429
+        
+        # Get all tickers from watchlist and journal
+        watchlist_items = mongodb_manager.get_user_watchlist(user_id)
+        trades = mongodb_manager.get_user_trades(user_id)
+        
+        # Collect all unique tickers
+        all_tickers = set()
+        for item in watchlist_items:
+            if item.get('symbol'):
+                all_tickers.add(item['symbol'].upper().strip())
+        for trade in trades:
+            if trade.get('symbol'):
+                all_tickers.add(trade['symbol'].upper().strip())
+        
+        normalized_tickers = sorted(list(all_tickers))
+        
+        # All story types
+        all_story_types = ['curated', 'market', 'sec_fin', 'trade', 'analysis']
+        
+        print(f"[news unified] Fetching unified news: {len(normalized_tickers)} tickers, {len(all_story_types)} story types")
+        
+        # Fetch ticker news
+        ticker_data = {}
+        if normalized_tickers:
+            query = _build_tickertick_query(normalized_tickers, None)
+            if query:
+                api_url = 'https://api.tickertick.com/feed'
+                params = {'q': query, 'n': 50}
+                
+                response = requests.get(api_url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    stories = data.get('stories', [])
+                    
+                    formatted_stories = []
+                    ticker_stories_map = {ticker: [] for ticker in normalized_tickers}
+                    
+                    for story in stories:
+                        story_tickers = story.get('tickers', story.get('tags', []))
+                        formatted_story = {
+                            'id': story.get('id'),
+                            'title': story.get('title', ''),
+                            'url': story.get('url', ''),
+                            'site': story.get('site', ''),
+                            'time': story.get('time'),
+                            'favicon_url': story.get('favicon_url', ''),
+                            'description': story.get('description', ''),
+                            'tickers': story_tickers
+                        }
+                        
+                        formatted_stories.append(formatted_story)
+                        
+                        for ticker in story_tickers:
+                            ticker_upper = ticker.upper()
+                            if ticker_upper in ticker_stories_map:
+                                ticker_stories_map[ticker_upper].append(formatted_story)
+                    
+                    formatted_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
+                    
+                    ticker_data = {
+                        'all_stories': formatted_stories[:50],
+                        'by_ticker': {ticker: stories[:30] for ticker, stories in ticker_stories_map.items()},
+                        'tickers': normalized_tickers
+                    }
+        
+        # Fetch story type news
+        story_type_data = {}
+        for story_type in all_story_types:
+            query = _build_tickertick_query(None, story_type)
+            if query:
+                api_url = 'https://api.tickertick.com/feed'
+                params = {'q': query, 'n': 30}
+                
+                response = requests.get(api_url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    stories = data.get('stories', [])
+                    
+                    formatted_stories = []
+                    for story in stories:
+                        formatted_stories.append({
+                            'id': story.get('id'),
+                            'title': story.get('title', ''),
+                            'url': story.get('url', ''),
+                            'site': story.get('site', ''),
+                            'time': story.get('time'),
+                            'favicon_url': story.get('favicon_url', ''),
+                            'description': story.get('description', ''),
+                            'tickers': story.get('tickers', story.get('tags', []))
+                        })
+                    
+                    formatted_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
+                    story_type_data[story_type] = formatted_stories[:30]
+        
+        # Combine all data
+        unified_data = {
+            'tickers': ticker_data,
+            'storyTypes': story_type_data,
+            'metadata': {
+                'cachedTickers': normalized_tickers,
+                'cachedStoryTypes': all_story_types,
+                'lastFetch': datetime.utcnow().isoformat()
+            }
+        }
+        
+        # Cache the unified data
+        mongodb_manager.set_unified_news_cache(
+            user_id,
+            unified_data,
+            {
+                'tickers': normalized_tickers,
+                'story_types': all_story_types,
+                'ticker_count': len(normalized_tickers),
+                'story_type_count': len(all_story_types)
+            }
+        )
+        
+        print(f"[news unified] Cached unified news: {len(normalized_tickers)} tickers, {len(all_story_types)} story types")
+        
+        return jsonify({
+            'success': True,
+            'data': unified_data,
+            'cached': False
+        })
+        
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'success': False,
+            'error': 'Request to TickerTick API timed out'
+        }), 504
+    except requests.exceptions.RequestException as e:
+        print(f"[news unified] Request error: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Error fetching news: {str(e)}'
+        }), 500
+    except Exception as e:
+        print(f"[news unified] Error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/news/batch', methods=['POST'])
+@login_required
+def get_news_batch():
+    """Fetch news in batches: all tickers (watchlist+journal) and all story types"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        user_id = user_info['user_id']
+        
+        data = request.get_json() or {}
+        request_type = data.get('type')  # 'tickers' or 'story_types'
+        tickers = data.get('tickers', [])
+        story_types = data.get('story_types', [])
+        n = data.get('n', 50)
+        use_cache = data.get('use_cache', True)
+        
+        # Limit n to 200
+        n = min(max(1, n), 200)
+        
+        result = {}
+        
+        if request_type == 'tickers' and tickers:
+            # Handle batch ticker request
+            normalized_tickers = list(set([t.upper().strip() for t in tickers if t and t.strip()]))
+            
+            if normalized_tickers:
+                # Check if all requested tickers are already in cache (BEFORE rate limit check)
+                if use_cache:
+                    all_in_cache, cached_batch = mongodb_manager.check_tickers_in_cache(user_id, normalized_tickers)
+                    if all_in_cache and cached_batch:
+                        print(f"[news batch] All {len(normalized_tickers)} tickers found in cache, returning without API call")
+                        return jsonify({
+                            'success': True,
+                            'data': cached_batch,
+                            'cached': True
+                        })
+                    elif cached_batch:
+                        # Partial cache - we have some data but not all requested tickers
+                        print(f"[news batch] Partial cache found, but some tickers missing. Will fetch from API.")
+                
+                # Only check rate limits if we need to make an API call
+                # Check user rate limit
+                can_fetch, wait_time = _check_user_news_rate_limit(user_id)
+                if not can_fetch:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Please wait {wait_time} seconds before refreshing news.',
+                        'rate_limited': True,
+                        'wait_time': wait_time
+                    }), 429
+                
+                # Check IP rate limit
+                can_request, ip_wait_time = _check_tickertick_rate_limit()
+                if not can_request:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Rate limit exceeded. Please wait {int(ip_wait_time)} seconds.',
+                        'rate_limited': True,
+                        'wait_time': int(ip_wait_time)
+                    }), 429
+                
+                # Fetch from API
+                query = _build_tickertick_query(normalized_tickers, None)
+                api_url = 'https://api.tickertick.com/feed'
+                params = {'q': query, 'n': n * 2}  # Fetch more to account for filtering
+                
+                print(f"[news batch] Fetching news for {len(normalized_tickers)} tickers, query: {query}")
+                response = requests.get(api_url, params=params, timeout=10)
+                
+                if response.status_code != 200:
+                    print(f"[news batch] TickerTick API error: {response.status_code}")
+                    return jsonify({
+                        'success': False,
+                        'error': f'TickerTick API error: {response.status_code}'
+                    }), response.status_code
+                
+                data = response.json()
+                stories = data.get('stories', [])
+                
+                # Format and organize stories by ticker
+                formatted_stories = []
+                ticker_stories_map = {ticker: [] for ticker in normalized_tickers}
+                
+                for story in stories:
+                    story_tickers = story.get('tickers', story.get('tags', []))
+                    formatted_story = {
+                        'id': story.get('id'),
+                        'title': story.get('title', ''),
+                        'url': story.get('url', ''),
+                        'site': story.get('site', ''),
+                        'time': story.get('time'),
+                        'favicon_url': story.get('favicon_url', ''),
+                        'description': story.get('description', ''),
+                        'tickers': story_tickers
+                    }
+                    
+                    formatted_stories.append(formatted_story)
+                    
+                    # Add to ticker-specific maps
+                    for ticker in story_tickers:
+                        ticker_upper = ticker.upper()
+                        if ticker_upper in ticker_stories_map:
+                            ticker_stories_map[ticker_upper].append(formatted_story)
+                
+                # Sort all stories by time
+                formatted_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
+                
+                # Merge with existing cache if we have partial cache
+                existing_cache = None
+                if use_cache:
+                    _, existing_cache = mongodb_manager.check_tickers_in_cache(user_id, normalized_tickers)
+                
+                if existing_cache and isinstance(existing_cache, dict):
+                    # Merge with existing cache
+                    existing_tickers = set(existing_cache.get('tickers', []))
+                    existing_by_ticker = existing_cache.get('by_ticker', {})
+                    existing_all_stories = existing_cache.get('all_stories', [])
+                    
+                    # Add new tickers to the set
+                    all_tickers = existing_tickers.union(set(normalized_tickers))
+                    
+                    # Merge by_ticker maps
+                    merged_by_ticker = existing_by_ticker.copy()
+                    for ticker, stories_list in ticker_stories_map.items():
+                        if ticker in merged_by_ticker:
+                            # Merge stories, remove duplicates by id
+                            existing_ids = {s.get('id') for s in merged_by_ticker[ticker]}
+                            new_stories = [s for s in stories_list if s.get('id') not in existing_ids]
+                            merged_by_ticker[ticker].extend(new_stories)
+                            merged_by_ticker[ticker].sort(key=lambda x: x.get('time', 0), reverse=True)
+                            merged_by_ticker[ticker] = merged_by_ticker[ticker][:n]
+                        else:
+                            merged_by_ticker[ticker] = stories_list[:n]
+                    
+                    # Merge all_stories, remove duplicates
+                    existing_story_ids = {s.get('id') for s in existing_all_stories}
+                    new_stories = [s for s in formatted_stories if s.get('id') not in existing_story_ids]
+                    merged_all_stories = existing_all_stories + new_stories
+                    merged_all_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
+                    
+                    batch_data = {
+                        'all_stories': merged_all_stories[:n * 2],  # Keep more stories for filtering
+                        'by_ticker': merged_by_ticker,
+                        'tickers': list(all_tickers)
+                    }
+                    print(f"[news batch] Merged with existing cache: {len(existing_tickers)} existing + {len(normalized_tickers)} new tickers")
+                else:
+                    # No existing cache, use new data
+                    batch_data = {
+                        'all_stories': formatted_stories[:n],
+                        'by_ticker': {ticker: stories[:n] for ticker, stories in ticker_stories_map.items()},
+                        'tickers': normalized_tickers
+                    }
+                
+                mongodb_manager.set_news_cache_batch(
+                    user_id, 
+                    'tickers', 
+                    batch_data,
+                    {'tickers': list(batch_data.get('tickers', [])), 'count': len(batch_data.get('all_stories', []))}
+                )
+                
+                print(f"[news batch] Cached {len(batch_data.get('all_stories', []))} stories for {len(batch_data.get('tickers', []))} tickers")
+                
+                return jsonify({
+                    'success': True,
+                    'data': batch_data,
+                    'cached': False
+                })
+        
+        elif request_type == 'story_types' and story_types:
+            # Handle batch story type request
+            result_by_type = {}
+            
+            # Check if all requested story types are already in cache (BEFORE rate limit check)
+            if use_cache:
+                all_in_cache, cached_batch = mongodb_manager.check_story_types_in_cache(user_id, story_types)
+                if all_in_cache and cached_batch:
+                    print(f"[news batch] All {len(story_types)} story types found in cache, returning without API call")
+                    return jsonify({
+                        'success': True,
+                        'data': cached_batch,
+                        'cached': True
+                    })
+                elif cached_batch:
+                    # Partial cache - we have some data but not all requested story types
+                    print(f"[news batch] Partial cache found, but some story types missing. Will fetch from API.")
+            
+            # Only check rate limits if we need to make an API call
+            # Check user rate limit
+            can_fetch, wait_time = _check_user_news_rate_limit(user_id)
+            if not can_fetch:
+                return jsonify({
+                    'success': False,
+                    'error': f'Please wait {wait_time} seconds before refreshing news.',
+                    'rate_limited': True,
+                    'wait_time': wait_time
+                }), 429
+            
+            # Check IP rate limit
+            can_request, ip_wait_time = _check_tickertick_rate_limit()
+            if not can_request:
+                return jsonify({
+                    'success': False,
+                    'error': f'Rate limit exceeded. Please wait {int(ip_wait_time)} seconds.',
+                    'rate_limited': True,
+                    'wait_time': int(ip_wait_time)
+                }), 429
+            
+            # Fetch all story types
+            all_stories_by_type = {}
+            for story_type in story_types:
+                query = _build_tickertick_query(None, story_type)
+                api_url = 'https://api.tickertick.com/feed'
+                params = {'q': query, 'n': n}
+                
+                print(f"[news batch] Fetching news for story type: {story_type}, query: {query}")
+                response = requests.get(api_url, params=params, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    stories = data.get('stories', [])
+                    
+                    formatted_stories = []
+                    for story in stories:
+                        formatted_stories.append({
+                            'id': story.get('id'),
+                            'title': story.get('title', ''),
+                            'url': story.get('url', ''),
+                            'site': story.get('site', ''),
+                            'time': story.get('time'),
+                            'favicon_url': story.get('favicon_url', ''),
+                            'description': story.get('description', ''),
+                            'tickers': story.get('tickers', story.get('tags', []))
+                        })
+                    
+                    formatted_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
+                    all_stories_by_type[story_type] = formatted_stories[:n]
+                else:
+                    print(f"[news batch] Error fetching {story_type}: {response.status_code}")
+                    all_stories_by_type[story_type] = []
+            
+            # Cache the batch data
+            mongodb_manager.set_news_cache_batch(
+                user_id,
+                'story_types',
+                all_stories_by_type,
+                {'story_types': story_types, 'count': sum(len(stories) for stories in all_stories_by_type.values())}
+            )
+            
+            print(f"[news batch] Cached story types: {list(all_stories_by_type.keys())}")
+            
+            return jsonify({
+                'success': True,
+                'data': all_stories_by_type,
+                'cached': False
+            })
+        
+        return jsonify({
+            'success': False,
+            'error': 'Invalid request type or missing parameters'
+        }), 400
+        
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'success': False,
+            'error': 'Request to TickerTick API timed out'
+        }), 504
+    except requests.exceptions.RequestException as e:
+        print(f"[news batch] Request error: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Error fetching news: {str(e)}'
+        }), 500
+    except Exception as e:
+        print(f"[news batch] Error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/news', methods=['GET', 'POST'])
+@login_required
+def get_news():
+    """Fetch news stories for given tickers or story type using TickerTick API"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        user_id = user_info['user_id']
+        
+        # Check user rate limit (once per minute per user)
+        can_fetch, wait_time = _check_user_news_rate_limit(user_id)
+        if not can_fetch:
+            return jsonify({
+                'success': False,
+                'error': f'Please wait {wait_time} seconds before refreshing news.',
+                'rate_limited': True,
+                'wait_time': wait_time
+            }), 429
+        
+        # Check IP rate limit (10 requests per minute per IP)
+        can_request, ip_wait_time = _check_tickertick_rate_limit()
+        if not can_request:
+            return jsonify({
+                'success': False,
+                'error': f'Rate limit exceeded. Please wait {int(ip_wait_time)} seconds.',
+                'rate_limited': True,
+                'wait_time': int(ip_wait_time)
+            }), 429
+        
+        # Get parameters from request
+        if request.method == 'POST':
+            data = request.get_json() or {}
+            tickers = data.get('tickers', [])
+            story_type = data.get('story_type')
+            n = data.get('n', 50)  # Number of stories to fetch
+            use_cache = data.get('use_cache', True)  # Default to using cache
+        else:
+            tickers_str = request.args.get('tickers', '')
+            tickers = [t.strip() for t in tickers_str.split(',') if t.strip()] if tickers_str else []
+            story_type = request.args.get('story_type')
+            n = int(request.args.get('n', 50))
+            use_cache = request.args.get('use_cache', 'true').lower() == 'true'
+        
+        # Validate input
+        if not tickers and not story_type:
+            return jsonify({
+                'success': False,
+                'error': 'Either tickers or story_type must be provided'
+            }), 400
+        
+        # Limit n to 200 (API max)
+        n = min(max(1, n), 200)
+        
+        # Handle story type queries (use user-based cache)
+        if story_type:
+            cache_key = _generate_cache_key(None, story_type)
+            
+            # Check cache if enabled
+            if use_cache and cache_key:
+                cached_stories = mongodb_manager.get_news_cache(user_id, cache_key)
+                if cached_stories is not None:
+                    print(f"[news] Returning cached news for story type: {story_type}")
+                    return jsonify({
+                        'success': True,
+                        'stories': cached_stories,
+                        'count': len(cached_stories),
+                        'cached': True,
+                        'query': _build_tickertick_query(None, story_type)
+                    })
+            
+            # Fetch from API for story type
+            query = _build_tickertick_query(None, story_type)
+            api_url = 'https://api.tickertick.com/feed'
+            params = {'q': query, 'n': n}
+            
+            print(f"[news] Fetching news for story type: {story_type}, query: {query}")
+            response = requests.get(api_url, params=params, timeout=10)
+            
+            if response.status_code != 200:
+                print(f"[news] TickerTick API error: {response.status_code} - {response.text}")
+                return jsonify({
+                    'success': False,
+                    'error': f'TickerTick API error: {response.status_code}'
+                }), response.status_code
+            
+            data = response.json()
+            stories = data.get('stories', [])
+            
+            # Format stories
+            formatted_stories = []
+            for story in stories:
+                formatted_stories.append({
+                    'id': story.get('id'),
+                    'title': story.get('title', ''),
+                    'url': story.get('url', ''),
+                    'site': story.get('site', ''),
+                    'time': story.get('time'),
+                    'favicon_url': story.get('favicon_url', ''),
+                    'description': story.get('description', ''),
+                    'tickers': story.get('tickers', story.get('tags', []))
+                })
+            
+            # Cache the results
+            if cache_key:
+                mongodb_manager.set_news_cache(user_id, cache_key, formatted_stories)
+            
+            print(f"[news] Fetched {len(formatted_stories)} stories for story type")
+            
+            return jsonify({
+                'success': True,
+                'stories': formatted_stories,
+                'count': len(formatted_stories),
+                'cached': False,
+                'query': query
+            })
+        
+        # Handle ticker-based queries (use per-symbol cache)
+        if not tickers:
+            return jsonify({
+                'success': False,
+                'error': 'No tickers provided'
+            }), 400
+        
+        # Normalize tickers
+        normalized_tickers = list(set([t.upper().strip() for t in tickers if t and t.strip()]))
+        
+        if not normalized_tickers:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid tickers provided'
+            }), 400
+        
+        # Check per-symbol cache first
+        cached_by_symbol = {}
+        symbols_to_fetch = []
+        
+        if use_cache:
+            cached_by_symbol = mongodb_manager.get_multiple_symbols_news_cache(normalized_tickers)
+            symbols_to_fetch = [s for s in normalized_tickers if s not in cached_by_symbol]
+            print(f"[news] Cache hit for {len(cached_by_symbol)} symbols, need to fetch {len(symbols_to_fetch)} symbols")
+        else:
+            symbols_to_fetch = normalized_tickers
+        
+        # Collect cached stories
+        all_stories = []
+        story_ids_seen = set()
+        
+        for symbol, cached_stories in cached_by_symbol.items():
+            for story in cached_stories:
+                story_id = story.get('id') or str(story.get('url', ''))
+                if story_id and story_id not in story_ids_seen:
+                    all_stories.append(story)
+                    story_ids_seen.add(story_id)
+        
+        # Fetch news for symbols not in cache
+        if symbols_to_fetch:
+            # Build query for symbols to fetch
+            query = _build_tickertick_query(symbols_to_fetch, None)
+            if not query:
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid query parameters'
+                }), 400
+            
+            # Fetch from API
+            api_url = 'https://api.tickertick.com/feed'
+            params = {
+                'q': query,
+                'n': n * 2  # Fetch more to account for filtering
+            }
+            
+            print(f"[news] Fetching news for symbols: {symbols_to_fetch}, query: {query}")
+            response = requests.get(api_url, params=params, timeout=10)
+            
+            if response.status_code != 200:
+                print(f"[news] TickerTick API error: {response.status_code} - {response.text}")
+                # If API fails but we have cached data, return cached data
+                if all_stories:
+                    print(f"[news] API failed but returning {len(all_stories)} cached stories")
+                    return jsonify({
+                        'success': True,
+                        'stories': all_stories[:n],
+                        'count': len(all_stories),
+                        'cached': True,
+                        'partial': True,
+                        'query': query
+                    })
+                return jsonify({
+                    'success': False,
+                    'error': f'TickerTick API error: {response.status_code}'
+                }), response.status_code
+            
+            data = response.json()
+            fetched_stories = data.get('stories', [])
+            
+            # Format and cache stories per symbol
+            symbol_stories_map = {symbol: [] for symbol in symbols_to_fetch}
+            
+            for story in fetched_stories:
+                story_tickers = story.get('tickers', story.get('tags', []))
+                formatted_story = {
+                    'id': story.get('id'),
+                    'title': story.get('title', ''),
+                    'url': story.get('url', ''),
+                    'site': story.get('site', ''),
+                    'time': story.get('time'),
+                    'favicon_url': story.get('favicon_url', ''),
+                    'description': story.get('description', ''),
+                    'tickers': story_tickers
+                }
+                
+                # Add story to each matching symbol's cache
+                for ticker in story_tickers:
+                    ticker_upper = ticker.upper()
+                    if ticker_upper in symbol_stories_map:
+                        symbol_stories_map[ticker_upper].append(formatted_story)
+                
+                # Add to all stories if not duplicate
+                story_id = formatted_story.get('id') or str(formatted_story.get('url', ''))
+                if story_id and story_id not in story_ids_seen:
+                    all_stories.append(formatted_story)
+                    story_ids_seen.add(story_id)
+            
+            # Cache stories per symbol
+            for symbol, stories_list in symbol_stories_map.items():
+                if stories_list:
+                    mongodb_manager.set_symbol_news_cache(symbol, stories_list)
+                    print(f"[news] Cached {len(stories_list)} stories for {symbol}")
+        
+        # Sort stories by time (newest first) and limit
+        all_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
+        final_stories = all_stories[:n]
+        
+        print(f"[news] Returning {len(final_stories)} stories ({len(cached_by_symbol)} from cache, {len(symbols_to_fetch)} fetched)")
+        
+        return jsonify({
+            'success': True,
+            'stories': final_stories,
+            'count': len(final_stories),
+            'cached': len(symbols_to_fetch) == 0,  # Fully cached if no API calls
+            'query': _build_tickertick_query(normalized_tickers, None)
+        })
+        
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'success': False,
+            'error': 'Request to TickerTick API timed out'
+        }), 504
+    except requests.exceptions.RequestException as e:
+        print(f"[news] Request error: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Error fetching news: {str(e)}'
+        }), 500
+    except Exception as e:
+        print(f"[news] Error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 @app.route('/api/fields', methods=['GET'])
