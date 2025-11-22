@@ -258,7 +258,13 @@ const NewsSection = ({
       return storiesToFilter;
     }
     
-    // If no tickers selected, return all stories
+    // If no tickers selected and we have symbols available, return empty array (don't show all)
+    // This applies when user has unselected all tickers in watchlist/journal
+    if (selectedTickers.size === 0 && symbols && symbols.length > 0) {
+      return [];
+    }
+    
+    // If no tickers selected and no symbols available, return all stories (fallback)
     if (selectedTickers.size === 0) {
       return storiesToFilter;
     }
@@ -268,7 +274,7 @@ const NewsSection = ({
       const storyTickers = story.tickers || [];
       return storyTickers.some(ticker => selectedTickers.has(ticker.toUpperCase()));
     });
-  }, [stories, selectedTickers, storyType, activeStoryType]);
+  }, [stories, selectedTickers, storyType, activeStoryType, symbols]);
 
   // Don't render if no symbols and no story type (unless storyType prop is provided)
   if ((!symbols || symbols.length === 0) && !storyType && !activeStoryType) {
