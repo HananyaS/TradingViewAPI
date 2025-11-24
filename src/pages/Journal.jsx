@@ -917,6 +917,7 @@ const Journal = () => {
           showStoryTypes={false}
           autoRefresh={false} // Batch hook handles refresh
           preloadedStories={tickerNews.all_stories || null}
+          allowApiFetch={false}
         />
       )}
     </div>

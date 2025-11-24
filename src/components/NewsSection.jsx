@@ -30,7 +30,8 @@ const NewsSection = ({
   showStoryTypes = true,
   autoRefresh = true,
   storyType = null, // If provided, use story type instead of symbols
-  preloadedStories = null // If provided, use preloaded stories instead of fetching
+  preloadedStories = null, // If provided, use preloaded stories instead of fetching
+  allowApiFetch = true // When false, never call the /api/news endpoints
 }) => {
   const { theme } = useTheme();
   const [stories, setStories] = useState([]);
@@ -78,6 +79,7 @@ const NewsSection = ({
   useEffect(() => {
     if (preloadedStories) return; // Skip if using preloaded stories
     if (rateLimited) return; // Skip if rate limited
+    if (!allowApiFetch) return; // Skip API calls when disabled
     
     const tickersToFetch = Array.from(selectedTickers);
     const currentStoryType = storyType || activeStoryType;
@@ -97,11 +99,11 @@ const NewsSection = ({
     fetchIfNeeded();
 
     // Set up auto-refresh interval if enabled - fetch once per minute (60000ms)
-    if (autoRefresh) {
+    if (autoRefresh && allowApiFetch) {
       const interval = setInterval(fetchIfNeeded, 60000);
       return () => clearInterval(interval);
     }
-  }, [selectedTickers, activeStoryType, storyType, lastFetchTime, autoRefresh, preloadedStories, rateLimited]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedTickers, activeStoryType, storyType, lastFetchTime, autoRefresh, preloadedStories, rateLimited, allowApiFetch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (rateLimited && waitTime > 0) {
@@ -119,6 +121,7 @@ const NewsSection = ({
   }, [rateLimited, waitTime]);
 
   const fetchNews = async (useCache = true) => {
+    if (!allowApiFetch) return;
     const tickersToFetch = Array.from(selectedTickers);
     const currentStoryType = storyType || activeStoryType;
     
@@ -210,7 +213,7 @@ const NewsSection = ({
     
     // Only fetch news if we don't have preloaded stories (client-side filtering will handle it)
     // If we have preloaded stories, the filteredStories memo will handle filtering
-    if (!preloadedStories && !activeStoryType) {
+    if (!preloadedStories && !activeStoryType && allowApiFetch) {
       setTimeout(() => fetchNews(true), 100);
     }
   };
@@ -218,7 +221,9 @@ const NewsSection = ({
   const handleStoryTypeChange = (storyType) => {
     setActiveStoryType(storyType);
     setSelectedTickers(new Set()); // Clear ticker selection when using story types
-    setTimeout(() => fetchNews(true), 100);
+    if (allowApiFetch) {
+      setTimeout(() => fetchNews(true), 100);
+    }
   };
 
   const formatTime = (timestamp) => {
@@ -381,13 +386,13 @@ const NewsSection = ({
             </span>
             <div className="flex space-x-2">
               <button
-                onClick={() => {
-                  setSelectedTickers(new Set(symbols));
-                  // Only fetch if we don't have preloaded stories (client-side filtering will handle it)
-                  if (!preloadedStories) {
-                    setTimeout(() => fetchNews(true), 100);
-                  }
-                }}
+                      onClick={() => {
+                        setSelectedTickers(new Set(symbols));
+                        // Only fetch if we don't have preloaded stories (client-side filtering will handle it)
+                        if (!preloadedStories && allowApiFetch) {
+                          setTimeout(() => fetchNews(true), 100);
+                        }
+                      }}
                 className="text-xs px-2 py-1 rounded text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
               >
                 Select All

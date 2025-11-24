@@ -49,6 +49,7 @@ const News = () => {
             autoRefresh={false} // Batch hook handles refresh
             storyType={storyTypeConfig.value}
             preloadedStories={storyTypeNews[storyTypeConfig.value] || null}
+            allowApiFetch={false}
           />
         ))}
       </div>

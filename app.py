@@ -1,27 +1,30 @@
-from flask import Flask, request, jsonify, send_file, session, redirect
-from flask_cors import CORS
 import io
 import json
-from datetime import datetime
-import pandas as pd
 import math
-import urllib.parse
-from bson import ObjectId
-import requests
-import time
-from screener_service import query_by_params, fetch_symbol_quotes
-from mongodb_config import mongodb_manager
-from google_oauth import create_oauth_flow, login_required, get_user_info, verify_google_token
-from auth_tokens import generate_token, verify_token, revoke_token
-from filter_schemas import ScreenerRequest, ScreenerResponse, FieldsMetadata, FieldMetadata
-from filter_serializer import FilterSerializer
-from pydantic import ValidationError
 import os
+import time
+import urllib.parse
+from datetime import datetime
+
+import pandas as pd
+import requests
+from bson import ObjectId
+from flask import Flask, request, jsonify, send_file, session, redirect
+from flask_cors import CORS
+from pydantic import ValidationError
+
+from auth_tokens import generate_token, verify_token, revoke_token
+from filter_schemas import ScreenerRequest, ScreenerResponse, FieldMetadata
+from filter_serializer import FilterSerializer
+from google_oauth import create_oauth_flow, login_required, get_user_info, verify_google_token
+from mongodb_config import mongodb_manager
 from react_routes import register_react_routes
+from screener_service import query_by_params, fetch_symbol_quotes
 
 # Load environment variables from .env file for local development
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
     print("✅ Loaded environment variables from .env file")
 except ImportError:
@@ -30,7 +33,8 @@ except FileNotFoundError:
     print("⚠️ .env file not found. Run: python local_setup.py")
 
 # Check if we're in production
-IS_PRODUCTION = os.getenv('FLASK_ENV') == 'production' or os.getenv('RENDER') == 'true' or os.path.exists('static/dist/index.html')
+IS_PRODUCTION = os.getenv('FLASK_ENV') == 'production' or os.getenv('RENDER') == 'true' or os.path.exists(
+    'static/dist/index.html')
 
 # Allow OAuth2 to work with HTTP for local development only
 if not IS_PRODUCTION:
@@ -70,6 +74,7 @@ _filter_serializer = None
 
 register_react_routes(app)
 
+
 def get_filter_serializer():
     """Get or create the filter serializer with field metadata"""
     global _filter_serializer
@@ -78,27 +83,27 @@ def get_filter_serializer():
             import json
             with open('static/fields.json', 'r') as f:
                 fields_data = json.load(f)
-            
+
             field_metadata = {
-                field['Name']: FieldMetadata(**field) 
+                field['Name']: FieldMetadata(**field)
                 for field in fields_data['fields']
             }
             _filter_serializer = FilterSerializer(field_metadata)
         except Exception as e:
             print(f"❌ Error loading field metadata: {e}")
             _filter_serializer = FilterSerializer({})
-    
+
     return _filter_serializer
+
 
 @app.route('/api/test-filter', methods=['POST'])
 def test_filter():
     """Test endpoint for debugging filter issues"""
     try:
-        print("🧪 Test filter endpoint called")
-        
         # Create a simple test request
-        from filter_schemas import ScreenerRequest, FilterGroup, FilterRule, FilterOperand, OperatorType, LogicalOperator
-        
+        from filter_schemas import ScreenerRequest, FilterGroup, FilterRule, FilterOperand, OperatorType, \
+            LogicalOperator
+
         # Create a simple rule: close > 10
         rule = FilterRule(
             id="test_rule_1",
@@ -107,7 +112,7 @@ def test_filter():
             right_operand=FilterOperand(type="constant", value=10.0),
             enabled=True
         )
-        
+
         # Create filter group
         group = FilterGroup(
             id="test_group_1",
@@ -116,7 +121,7 @@ def test_filter():
             nested_groups=[],
             enabled=True
         )
-        
+
         # Create screener request
         request = ScreenerRequest(
             filter_groups=[group],
@@ -125,39 +130,29 @@ def test_filter():
             sort_by="market_cap_basic",
             sort_ascending=False
         )
-        
-        print("✅ Test request created")
-        
+
         # Get filter serializer
         serializer = get_filter_serializer()
-        
+
         # Try to serialize
-        print("🚀 Testing serialization...")
         query = serializer.serialize_screener_request(request)
-        
-        print("✅ Serialization successful!")
-        
+
         # Try to execute
-        print("📡 Testing query execution...")
         columns, results_df = query.get_scanner_data()
-        
-        print(f"✅ Query execution successful! Got {len(results_df)} results")
-        
+
         return jsonify({
             'success': True,
             'message': 'Test filter worked successfully',
             'count': len(results_df),
             'columns': list(columns) if columns else []
         })
-        
+
     except Exception as e:
-        print(f"❌ Test filter failed: {e}")
-        import traceback
-        traceback.print_exc()
         return jsonify({
             'success': False,
             'message': f'Test filter failed: {str(e)}'
         }), 500
+
 
 def get_frontend_url():
     """Get frontend URL based on environment"""
@@ -166,6 +161,7 @@ def get_frontend_url():
         return render_url if render_url else request.url_root.rstrip('/')
     else:
         return 'http://localhost:5173'
+
 
 @app.route('/login')
 def login():
@@ -182,7 +178,7 @@ def login():
                 redirect_uri = redirect_uri
         else:
             redirect_uri = None  # Use default from google_oauth.py
-        
+
         flow = create_oauth_flow(redirect_uri)
         authorization_url, state = flow.authorization_url()
         session['state'] = state
@@ -193,16 +189,12 @@ def login():
         frontend_url = get_frontend_url()
         return redirect(f'{frontend_url}/login?error=Login+error:+{str(e)}')
 
+
 @app.route('/oauth2callback')
 def oauth2callback():
     """Handle Google OAuth callback"""
     try:
-        print(f"\n=== OAuth Callback ===")
-        print(f"Request URL: {request.url}")
-        print(f"Request Host header: {request.headers.get('Host', 'NOT SET')}")
-        print(f"Request args: {request.args}")
-        print("=====================\n")
-        
+
         # Determine redirect URI for OAuth callback
         if IS_PRODUCTION:
             render_url = os.getenv('RENDER_EXTERNAL_URL', '')
@@ -212,18 +204,15 @@ def oauth2callback():
                 redirect_uri = f"{request.scheme}://{request.host}/oauth2callback"
         else:
             redirect_uri = None  # Use default
-        
+
         flow = create_oauth_flow(redirect_uri)
         flow.fetch_token(authorization_response=request.url)
-        
-        print(f"✅ Successfully fetched token from Google")
-        
+
         # Get user info from Google
         credentials = flow.credentials
-        print(f"ID Token exists: {credentials.id_token is not None}")
-        
+
         id_info = verify_google_token(credentials.id_token)
-        
+
         if id_info:
             # Record or get user (tracks first login date)
             user_profile = mongodb_manager.get_or_create_user(
@@ -232,7 +221,7 @@ def oauth2callback():
                 name=id_info['name'],
                 picture=id_info.get('picture', '')
             )
-            
+
             # Store user info in session
             session.clear()  # Clear any old session data first
             session['user_id'] = id_info['user_id']
@@ -242,12 +231,7 @@ def oauth2callback():
             session['authenticated'] = True
             session.permanent = True  # Make session persistent
             session.modified = True  # Force session to be saved
-            
-            print(f"\n=== OAuth Success ===")
-            print(f"User authenticated: {id_info['email']}")
-            if user_profile:
-                print(f"First login date: {user_profile.get('first_login_date')}")
-            
+
             # Generate authentication token (bypasses cookie issues!)
             token = generate_token({
                 'user_id': id_info['user_id'],
@@ -255,27 +239,20 @@ def oauth2callback():
                 'name': id_info['name'],
                 'picture': id_info['picture']
             })
-            
-            print(f"Generated auth token: {token[:20]}...")
-            print(f"Redirecting to React app with token...")
-            print("=====================\n")
-            
+
             # Redirect to React with token in URL (React will capture and store it)
             frontend_url = get_frontend_url()
             return redirect(f'{frontend_url}/?auth_token={token}')
         else:
-            print("Invalid Google token")
             frontend_url = get_frontend_url()
             return redirect(f'{frontend_url}/login?error=Invalid+Google+token')
-            
+
     except Exception as e:
         error_msg = f'OAuth Error: {str(e)}'
-        print(f"\n❌ OAuth Error: {e}")
-        import traceback
-        traceback.print_exc()
-        print("=====================\n")
+        print(f"OAuth Error: {e}")
         frontend_url = get_frontend_url()
         return redirect(f'{frontend_url}/login?error={error_msg}')
+
 
 @app.route('/logout', methods=['POST'])
 def logout():
@@ -286,9 +263,10 @@ def logout():
         token = auth_header[7:]
         revoke_token(token)
         print(f"🔓 Token revoked")
-    
+
     session.clear()
     return jsonify({'success': True, 'message': 'Logged out'})
+
 
 @app.route('/api/user')
 def get_user():
@@ -296,20 +274,14 @@ def get_user():
     # Check for Authorization header with token
     auth_header = request.headers.get('Authorization', '')
     token = None
-    
+
     if auth_header.startswith('Bearer '):
         token = auth_header[7:]  # Remove 'Bearer ' prefix
-    
-    print("\n=== /api/user request ===")
-    print(f"Authorization header present: {bool(auth_header)}")
-    print(f"Token: {token[:20] + '...' if token else 'None'}")
-    
+
     # Verify token
     user_data = verify_token(token)
-    
+
     if user_data:
-        print(f"✅ Token valid! User: {user_data.get('email')}")
-        print("========================\n")
         return jsonify({
             'authenticated': True,
             'user_id': user_data['user_id'],
@@ -318,9 +290,8 @@ def get_user():
             'picture': user_data['picture']
         })
     else:
-        print(f"❌ No valid token")
-        print("========================\n")
         return jsonify({'authenticated': False})
+
 
 @app.route('/api/profile', methods=['GET'])
 @login_required
@@ -353,6 +324,7 @@ def get_user_profile():
         print(f"Error getting user profile: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+
 @app.route('/api/profile', methods=['PUT'])
 @login_required
 def update_user_profile():
@@ -364,15 +336,15 @@ def update_user_profile():
     try:
         data = request.get_json()
         profile_data = {}
-        
+
         if 'name' in data:
             profile_data['name'] = data['name']
         if 'picture' in data:
             profile_data['picture'] = data['picture']
-        
+
         if not profile_data:
             return jsonify({'success': False, 'error': 'No fields to update'})
-        
+
         success = mongodb_manager.update_user_profile(user_id, profile_data)
         if success:
             updated_profile = mongodb_manager.get_user_profile(user_id)
@@ -406,6 +378,7 @@ def update_user_profile():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)})
 
+
 @app.route('/api/profile/stats', methods=['GET'])
 @login_required
 def get_user_stats():
@@ -423,6 +396,7 @@ def get_user_stats():
     except Exception as e:
         print(f"Error getting user stats: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
 
 @app.route('/api/profile', methods=['DELETE'])
 @login_required
@@ -448,6 +422,7 @@ def delete_user_account():
         print(f"Error deleting account: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+
 @app.route('/api/journal/trades', methods=['GET'])
 @login_required
 def get_user_trades():
@@ -466,6 +441,7 @@ def get_user_trades():
         print(f"Error getting user trades: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+
 @app.route('/api/journal/trades', methods=['POST'])
 @login_required
 def save_user_trade():
@@ -476,13 +452,13 @@ def save_user_trade():
     user_id = user_info['user_id']
     try:
         data = request.get_json()
-        
+
         # Validate required fields
         required_fields = ['symbol', 'type', 'price', 'quantity', 'date']
         for field in required_fields:
             if field not in data or not data[field]:
                 return jsonify({'success': False, 'error': f'Missing required field: {field}'})
-        
+
         # Prepare trade data
         trade_data = {
             'symbol': data['symbol'].upper(),
@@ -496,10 +472,10 @@ def save_user_trade():
             'screenerId': data.get('screenerId'),
             'timestamp': datetime.utcnow().isoformat()
         }
-        
+
         # Save trade to MongoDB
         trade_id = mongodb_manager.save_trade(user_id, trade_data)
-        
+
         if trade_id:
             return jsonify({
                 'success': True,
@@ -508,10 +484,11 @@ def save_user_trade():
             })
         else:
             return jsonify({'success': False, 'error': 'Failed to save trade'})
-            
+
     except Exception as e:
         print(f"Error saving trade: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
 
 @app.route('/api/journal/trades/<trade_id>', methods=['DELETE'])
 @login_required
@@ -531,6 +508,7 @@ def delete_user_trade(trade_id):
         print(f"Error deleting trade: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+
 @app.route('/api/journal/trades/<trade_id>', methods=['PUT'])
 @login_required
 def update_user_trade(trade_id):
@@ -541,7 +519,7 @@ def update_user_trade(trade_id):
     user_id = user_info['user_id']
     try:
         data = request.get_json()
-        
+
         # Prepare trade data for update
         trade_data = {}
         if 'symbol' in data:
@@ -563,7 +541,7 @@ def update_user_trade(trade_id):
         if 'exit_price' in data:
             exit_value = data['exit_price']
             trade_data['exit_price'] = None if exit_value is None else float(exit_value)
-        
+
         success = mongodb_manager.update_trade(user_id, trade_id, trade_data)
         if success:
             updated_trade = mongodb_manager.get_trade_by_id(user_id, trade_id)
@@ -577,6 +555,7 @@ def update_user_trade(trade_id):
     except Exception as e:
         print(f"Error updating trade: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
 
 @app.route('/api/watchlist/items', methods=['GET'])
 @login_required
@@ -596,6 +575,7 @@ def get_user_watchlist():
         print(f"Error getting user watchlist: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+
 @app.route('/api/watchlist/items', methods=['POST'])
 @login_required
 def save_user_watchlist_item():
@@ -606,11 +586,11 @@ def save_user_watchlist_item():
     user_id = user_info['user_id']
     try:
         data = request.get_json()
-        
+
         # Validate required fields
         if 'symbol' not in data or not data['symbol']:
             return jsonify({'success': False, 'error': 'Missing required field: symbol'})
-        
+
         # Prepare item data
         item_data = {
             'symbol': data['symbol'].upper(),
@@ -619,10 +599,10 @@ def save_user_watchlist_item():
             'stop_loss': data.get('stop_loss'),
             'timestamp': datetime.utcnow().isoformat()
         }
-        
+
         # Save watchlist item to MongoDB
         item_id = mongodb_manager.save_watchlist_item(user_id, item_data)
-        
+
         if item_id:
             return jsonify({
                 'success': True,
@@ -631,10 +611,11 @@ def save_user_watchlist_item():
             })
         else:
             return jsonify({'success': False, 'error': 'Failed to save watchlist item'})
-            
+
     except Exception as e:
         print(f"Error saving watchlist item: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
 
 @app.route('/api/watchlist/items/<item_id>', methods=['DELETE'])
 @login_required
@@ -654,6 +635,7 @@ def delete_user_watchlist_item(item_id):
         print(f"Error deleting watchlist item: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+
 @app.route('/api/watchlist/items/<item_id>', methods=['PUT'])
 @login_required
 def update_user_watchlist_item(item_id):
@@ -664,7 +646,7 @@ def update_user_watchlist_item(item_id):
     user_id = user_info['user_id']
     try:
         data = request.get_json()
-        
+
         # Prepare item data for update
         item_data = {}
         if 'symbol' in data:
@@ -675,7 +657,7 @@ def update_user_watchlist_item(item_id):
             item_data['target_price'] = data['target_price']
         if 'stop_loss' in data:
             item_data['stop_loss'] = data['stop_loss']
-        
+
         success = mongodb_manager.update_watchlist_item(user_id, item_id, item_data)
         if success:
             return jsonify({'success': True, 'message': 'Watchlist item updated successfully'})
@@ -685,6 +667,7 @@ def update_user_watchlist_item(item_id):
         print(f"Error updating watchlist item: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+
 @app.route('/api/query/list', methods=['GET'])
 @login_required
 def list_saved_queries():
@@ -693,6 +676,7 @@ def list_saved_queries():
         return jsonify({'success': False, 'message': 'Authentication required'}), 401
     queries = mongodb_manager.get_user_queries(user_info['user_id'])
     return jsonify({'success': True, 'queries': queries})
+
 
 @app.route('/api/query/save', methods=['POST'])
 @login_required
@@ -720,6 +704,7 @@ def save_user_query_route():
         return jsonify({'success': False, 'message': 'Failed to save query'}), 500
     return jsonify({'success': True, 'query_id': query_id})
 
+
 @app.route('/api/query/load/<query_id>', methods=['GET'])
 @login_required
 def load_user_query(query_id):
@@ -730,6 +715,7 @@ def load_user_query(query_id):
     if not query:
         return jsonify({'success': False, 'message': 'Query not found'}), 404
     return jsonify({'success': True, 'query': query})
+
 
 @app.route('/api/query/delete/<query_id>', methods=['DELETE'])
 @login_required
@@ -742,6 +728,7 @@ def delete_user_query_route(query_id):
         return jsonify({'success': True})
     return jsonify({'success': False, 'message': 'Query not found'}), 404
 
+
 @app.route('/api/prices/cache', methods=['GET'])
 def get_cached_prices():
     """Get cached prices for symbols"""
@@ -749,7 +736,7 @@ def get_cached_prices():
         symbols = request.args.getlist('symbols[]')
         if not symbols:
             return jsonify({'success': False, 'error': 'No symbols provided'})
-        
+
         # Get cached prices from MongoDB
         cached_prices = {}
         for symbol in symbols:
@@ -761,7 +748,7 @@ def get_cached_prices():
                     'changePercent': price_doc['change_percent'],
                     'lastUpdate': price_doc['last_update'].isoformat()
                 }
-        
+
         return jsonify({
             'success': True,
             'prices': cached_prices
@@ -770,13 +757,14 @@ def get_cached_prices():
         print(f"Error getting cached prices: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+
 @app.route('/api/prices/cache', methods=['POST'])
 def update_cached_prices():
     """Update cached prices for symbols"""
     try:
         data = request.get_json()
         prices = data.get('prices', {})
-        
+
         # Update cached prices in MongoDB
         for symbol, price_data in prices.items():
             mongodb_manager.update_price_cache(
@@ -785,7 +773,7 @@ def update_cached_prices():
                 change=price_data['change'],
                 change_percent=price_data['changePercent']
             )
-        
+
         return jsonify({
             'success': True,
             'message': f'Updated {len(prices)} price(s)'
@@ -794,22 +782,20 @@ def update_cached_prices():
         print(f"Error updating cached prices: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+
 @app.route('/api/prices/fetch', methods=['POST'])
 def fetch_live_prices():
     """Fetch live prices for symbols using TradingView API"""
     try:
         data = request.get_json()
         symbols = data.get('symbols', [])
-        print('symbols', symbols)
-        
+
         if not symbols:
             return jsonify({'success': False, 'error': 'No symbols provided'})
-        
+
         # Fetch live prices using TradingView screener
-        print(f"[prices.fetch] Fetching live prices for symbols: {symbols}")
         live_prices = fetch_symbol_quotes(symbols)
-        print(f"[prices.fetch] Screener response: {live_prices}")
-        
+
         # Cache the prices
         for symbol, price_data in live_prices.items():
             if price_data:
@@ -821,7 +807,7 @@ def fetch_live_prices():
                 )
             else:
                 print(f"[prices.fetch] No price data returned for {symbol}")
-        
+
         return jsonify({
             'success': True,
             'prices': live_prices
@@ -834,36 +820,38 @@ def fetch_live_prices():
 # Rate limiting for TickerTick API (10 requests per minute per IP)
 _tickertick_rate_limit = {}
 
+
 def _check_tickertick_rate_limit():
     """Check if we can make a request to TickerTick API"""
     global _tickertick_rate_limit
     current_time = time.time()
-    
+
     # Clean old entries (older than 1 minute)
     _tickertick_rate_limit = {
-        ip: timestamps 
+        ip: timestamps
         for ip, timestamps in _tickertick_rate_limit.items()
         if any(ts > current_time - 60 for ts in timestamps)
     }
-    
+
     # Get client IP
     client_ip = request.remote_addr or 'unknown'
-    
+
     # Get timestamps for this IP
     timestamps = _tickertick_rate_limit.get(client_ip, [])
-    
+
     # Remove timestamps older than 1 minute
     timestamps = [ts for ts in timestamps if ts > current_time - 60]
-    
+
     # Check if we've exceeded the limit
     if len(timestamps) >= 10:
         return False, 60 - (current_time - min(timestamps))
-    
+
     # Add current timestamp
     timestamps.append(current_time)
     _tickertick_rate_limit[client_ip] = timestamps
-    
+
     return True, 0
+
 
 def _check_user_news_rate_limit(user_id):
     """Check if user can fetch news (once per minute per user)"""
@@ -880,21 +868,22 @@ def _check_user_news_rate_limit(user_id):
         print(f"[news] Error checking user rate limit: {e}")
         return True, 0
 
+
 def _build_tickertick_query(tickers=None, story_type=None):
     """Build TickerTick query string from list of tickers or story type"""
     if story_type:
         # Story type query (e.g., T:curated, T:market)
         return f"T:{story_type}"
-    
+
     if not tickers:
         return None
-    
+
     # Normalize tickers (uppercase, remove duplicates)
     normalized_tickers = list(set([t.upper().strip() for t in tickers if t and t.strip()]))
-    
+
     if not normalized_tickers:
         return None
-    
+
     if len(normalized_tickers) == 1:
         # Single ticker: use tt:ticker format
         return f"tt:{normalized_tickers[0].lower()}"
@@ -902,6 +891,7 @@ def _build_tickertick_query(tickers=None, story_type=None):
         # Multiple tickers: use (or tt:ticker1 tt:ticker2 ...) format
         ticker_terms = " ".join([f"tt:{t.lower()}" for t in normalized_tickers])
         return f"(or {ticker_terms})"
+
 
 def _generate_cache_key(tickers=None, story_type=None):
     """Generate a cache key from tickers or story type"""
@@ -912,6 +902,7 @@ def _generate_cache_key(tickers=None, story_type=None):
         return f"tickers:{','.join(normalized)}"
     return None
 
+
 @app.route('/api/news/unified', methods=['POST'])
 @login_required
 def get_unified_news():
@@ -921,21 +912,20 @@ def get_unified_news():
         if not user_info:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         user_id = user_info['user_id']
-        
+
         data = request.get_json() or {}
         use_cache = data.get('use_cache', True)
-        
+
         # Check cache FIRST (before rate limits)
         if use_cache:
             cached_data = mongodb_manager.get_unified_news_cache(user_id)
             if cached_data:
-                print(f"[news unified] Returning cached unified news data")
                 return jsonify({
                     'success': True,
                     'data': cached_data,
                     'cached': True
                 })
-        
+
         # Only check rate limits if we need to make API calls
         # Check user rate limit
         can_fetch, wait_time = _check_user_news_rate_limit(user_id)
@@ -946,7 +936,7 @@ def get_unified_news():
                 'rate_limited': True,
                 'wait_time': wait_time
             }), 429
-        
+
         # Check IP rate limit
         can_request, ip_wait_time = _check_tickertick_rate_limit()
         if not can_request:
@@ -956,11 +946,11 @@ def get_unified_news():
                 'rate_limited': True,
                 'wait_time': int(ip_wait_time)
             }), 429
-        
+
         # Get all tickers from watchlist and journal
         watchlist_items = mongodb_manager.get_user_watchlist(user_id)
         trades = mongodb_manager.get_user_trades(user_id)
-        
+
         # Collect all unique tickers
         all_tickers = set()
         for item in watchlist_items:
@@ -969,14 +959,12 @@ def get_unified_news():
         for trade in trades:
             if trade.get('symbol'):
                 all_tickers.add(trade['symbol'].upper().strip())
-        
+
         normalized_tickers = sorted(list(all_tickers))
-        
+
         # All story types
         all_story_types = ['curated', 'market', 'sec_fin', 'trade', 'analysis']
-        
-        print(f"[news unified] Fetching unified news: {len(normalized_tickers)} tickers, {len(all_story_types)} story types")
-        
+
         # Fetch ticker news
         ticker_data = {}
         if normalized_tickers:
@@ -984,15 +972,15 @@ def get_unified_news():
             if query:
                 api_url = 'https://api.tickertick.com/feed'
                 params = {'q': query, 'n': 50}
-                
+
                 response = requests.get(api_url, params=params, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     stories = data.get('stories', [])
-                    
+
                     formatted_stories = []
                     ticker_stories_map = {ticker: [] for ticker in normalized_tickers}
-                    
+
                     for story in stories:
                         story_tickers = story.get('tickers', story.get('tags', []))
                         formatted_story = {
@@ -1005,22 +993,28 @@ def get_unified_news():
                             'description': story.get('description', ''),
                             'tickers': story_tickers
                         }
-                        
+
                         formatted_stories.append(formatted_story)
-                        
+
                         for ticker in story_tickers:
                             ticker_upper = ticker.upper()
                             if ticker_upper in ticker_stories_map:
                                 ticker_stories_map[ticker_upper].append(formatted_story)
-                    
+
+                    # NO sentiment analysis here - cache first, then apply sentiment on retrieval
                     formatted_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
-                    
+
+                    # Sort and limit stories per ticker
+                    for ticker in ticker_stories_map:
+                        ticker_stories_map[ticker].sort(key=lambda x: x.get('time', 0), reverse=True)
+                        ticker_stories_map[ticker] = ticker_stories_map[ticker][:30]
+
                     ticker_data = {
                         'all_stories': formatted_stories[:50],
-                        'by_ticker': {ticker: stories[:30] for ticker, stories in ticker_stories_map.items()},
+                        'by_ticker': ticker_stories_map,
                         'tickers': normalized_tickers
                     }
-        
+
         # Fetch story type news
         story_type_data = {}
         for story_type in all_story_types:
@@ -1028,12 +1022,12 @@ def get_unified_news():
             if query:
                 api_url = 'https://api.tickertick.com/feed'
                 params = {'q': query, 'n': 30}
-                
+
                 response = requests.get(api_url, params=params, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     stories = data.get('stories', [])
-                    
+
                     formatted_stories = []
                     for story in stories:
                         formatted_stories.append({
@@ -1046,10 +1040,11 @@ def get_unified_news():
                             'description': story.get('description', ''),
                             'tickers': story.get('tickers', story.get('tags', []))
                         })
-                    
+
+                    # NO sentiment analysis here - cache first, then apply sentiment on retrieval
                     formatted_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
                     story_type_data[story_type] = formatted_stories[:30]
-        
+
         # Combine all data
         unified_data = {
             'tickers': ticker_data,
@@ -1060,8 +1055,8 @@ def get_unified_news():
                 'lastFetch': datetime.utcnow().isoformat()
             }
         }
-        
-        # Cache the unified data
+
+        # Cache the unified data (without sentiment - will be applied on retrieval)
         mongodb_manager.set_unified_news_cache(
             user_id,
             unified_data,
@@ -1072,15 +1067,13 @@ def get_unified_news():
                 'story_type_count': len(all_story_types)
             }
         )
-        
-        print(f"[news unified] Cached unified news: {len(normalized_tickers)} tickers, {len(all_story_types)} story types")
-        
+
         return jsonify({
             'success': True,
             'data': unified_data,
             'cached': False
         })
-        
+
     except requests.exceptions.Timeout:
         return jsonify({
             'success': False,
@@ -1099,6 +1092,7 @@ def get_unified_news():
             'error': str(e)
         }), 500
 
+
 @app.route('/api/news/batch', methods=['POST'])
 @login_required
 def get_news_batch():
@@ -1108,29 +1102,28 @@ def get_news_batch():
         if not user_info:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         user_id = user_info['user_id']
-        
+
         data = request.get_json() or {}
         request_type = data.get('type')  # 'tickers' or 'story_types'
         tickers = data.get('tickers', [])
         story_types = data.get('story_types', [])
         n = data.get('n', 50)
         use_cache = data.get('use_cache', True)
-        
+
         # Limit n to 200
         n = min(max(1, n), 200)
-        
+
         result = {}
-        
+
         if request_type == 'tickers' and tickers:
             # Handle batch ticker request
             normalized_tickers = list(set([t.upper().strip() for t in tickers if t and t.strip()]))
-            
+
             if normalized_tickers:
                 # Check if all requested tickers are already in cache (BEFORE rate limit check)
                 if use_cache:
                     all_in_cache, cached_batch = mongodb_manager.check_tickers_in_cache(user_id, normalized_tickers)
                     if all_in_cache and cached_batch:
-                        print(f"[news batch] All {len(normalized_tickers)} tickers found in cache, returning without API call")
                         return jsonify({
                             'success': True,
                             'data': cached_batch,
@@ -1138,8 +1131,8 @@ def get_news_batch():
                         })
                     elif cached_batch:
                         # Partial cache - we have some data but not all requested tickers
-                        print(f"[news batch] Partial cache found, but some tickers missing. Will fetch from API.")
-                
+                        pass
+
                 # Only check rate limits if we need to make an API call
                 # Check user rate limit
                 can_fetch, wait_time = _check_user_news_rate_limit(user_id)
@@ -1150,7 +1143,7 @@ def get_news_batch():
                         'rate_limited': True,
                         'wait_time': wait_time
                     }), 429
-                
+
                 # Check IP rate limit
                 can_request, ip_wait_time = _check_tickertick_rate_limit()
                 if not can_request:
@@ -1160,29 +1153,28 @@ def get_news_batch():
                         'rate_limited': True,
                         'wait_time': int(ip_wait_time)
                     }), 429
-                
+
                 # Fetch from API
                 query = _build_tickertick_query(normalized_tickers, None)
                 api_url = 'https://api.tickertick.com/feed'
                 params = {'q': query, 'n': n * 2}  # Fetch more to account for filtering
-                
-                print(f"[news batch] Fetching news for {len(normalized_tickers)} tickers, query: {query}")
+
                 response = requests.get(api_url, params=params, timeout=10)
-                
+
                 if response.status_code != 200:
                     print(f"[news batch] TickerTick API error: {response.status_code}")
                     return jsonify({
                         'success': False,
                         'error': f'TickerTick API error: {response.status_code}'
                     }), response.status_code
-                
+
                 data = response.json()
                 stories = data.get('stories', [])
-                
+
                 # Format and organize stories by ticker
                 formatted_stories = []
                 ticker_stories_map = {ticker: [] for ticker in normalized_tickers}
-                
+
                 for story in stories:
                     story_tickers = story.get('tickers', story.get('tags', []))
                     formatted_story = {
@@ -1195,32 +1187,31 @@ def get_news_batch():
                         'description': story.get('description', ''),
                         'tickers': story_tickers
                     }
-                    
+
                     formatted_stories.append(formatted_story)
-                    
+
                     # Add to ticker-specific maps
                     for ticker in story_tickers:
                         ticker_upper = ticker.upper()
                         if ticker_upper in ticker_stories_map:
                             ticker_stories_map[ticker_upper].append(formatted_story)
-                
                 # Sort all stories by time
                 formatted_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
-                
+
                 # Merge with existing cache if we have partial cache
                 existing_cache = None
                 if use_cache:
                     _, existing_cache = mongodb_manager.check_tickers_in_cache(user_id, normalized_tickers)
-                
+
                 if existing_cache and isinstance(existing_cache, dict):
                     # Merge with existing cache
                     existing_tickers = set(existing_cache.get('tickers', []))
                     existing_by_ticker = existing_cache.get('by_ticker', {})
                     existing_all_stories = existing_cache.get('all_stories', [])
-                    
+
                     # Add new tickers to the set
                     all_tickers = existing_tickers.union(set(normalized_tickers))
-                    
+
                     # Merge by_ticker maps
                     merged_by_ticker = existing_by_ticker.copy()
                     for ticker, stories_list in ticker_stories_map.items():
@@ -1233,19 +1224,18 @@ def get_news_batch():
                             merged_by_ticker[ticker] = merged_by_ticker[ticker][:n]
                         else:
                             merged_by_ticker[ticker] = stories_list[:n]
-                    
+
                     # Merge all_stories, remove duplicates
                     existing_story_ids = {s.get('id') for s in existing_all_stories}
                     new_stories = [s for s in formatted_stories if s.get('id') not in existing_story_ids]
                     merged_all_stories = existing_all_stories + new_stories
                     merged_all_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
-                    
+
                     batch_data = {
                         'all_stories': merged_all_stories[:n * 2],  # Keep more stories for filtering
                         'by_ticker': merged_by_ticker,
                         'tickers': list(all_tickers)
                     }
-                    print(f"[news batch] Merged with existing cache: {len(existing_tickers)} existing + {len(normalized_tickers)} new tickers")
                 else:
                     # No existing cache, use new data
                     batch_data = {
@@ -1253,31 +1243,28 @@ def get_news_batch():
                         'by_ticker': {ticker: stories[:n] for ticker, stories in ticker_stories_map.items()},
                         'tickers': normalized_tickers
                     }
-                
+
                 mongodb_manager.set_news_cache_batch(
-                    user_id, 
-                    'tickers', 
+                    user_id,
+                    'tickers',
                     batch_data,
                     {'tickers': list(batch_data.get('tickers', [])), 'count': len(batch_data.get('all_stories', []))}
                 )
-                
-                print(f"[news batch] Cached {len(batch_data.get('all_stories', []))} stories for {len(batch_data.get('tickers', []))} tickers")
-                
+
                 return jsonify({
                     'success': True,
                     'data': batch_data,
                     'cached': False
                 })
-        
+
         elif request_type == 'story_types' and story_types:
             # Handle batch story type request
             result_by_type = {}
-            
+
             # Check if all requested story types are already in cache (BEFORE rate limit check)
             if use_cache:
                 all_in_cache, cached_batch = mongodb_manager.check_story_types_in_cache(user_id, story_types)
                 if all_in_cache and cached_batch:
-                    print(f"[news batch] All {len(story_types)} story types found in cache, returning without API call")
                     return jsonify({
                         'success': True,
                         'data': cached_batch,
@@ -1285,8 +1272,8 @@ def get_news_batch():
                     })
                 elif cached_batch:
                     # Partial cache - we have some data but not all requested story types
-                    print(f"[news batch] Partial cache found, but some story types missing. Will fetch from API.")
-            
+                    pass
+
             # Only check rate limits if we need to make an API call
             # Check user rate limit
             can_fetch, wait_time = _check_user_news_rate_limit(user_id)
@@ -1297,7 +1284,7 @@ def get_news_batch():
                     'rate_limited': True,
                     'wait_time': wait_time
                 }), 429
-            
+
             # Check IP rate limit
             can_request, ip_wait_time = _check_tickertick_rate_limit()
             if not can_request:
@@ -1307,21 +1294,20 @@ def get_news_batch():
                     'rate_limited': True,
                     'wait_time': int(ip_wait_time)
                 }), 429
-            
+
             # Fetch all story types
             all_stories_by_type = {}
             for story_type in story_types:
                 query = _build_tickertick_query(None, story_type)
                 api_url = 'https://api.tickertick.com/feed'
                 params = {'q': query, 'n': n}
-                
-                print(f"[news batch] Fetching news for story type: {story_type}, query: {query}")
+
                 response = requests.get(api_url, params=params, timeout=10)
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     stories = data.get('stories', [])
-                    
+
                     formatted_stories = []
                     for story in stories:
                         formatted_stories.append({
@@ -1334,34 +1320,33 @@ def get_news_batch():
                             'description': story.get('description', ''),
                             'tickers': story.get('tickers', story.get('tags', []))
                         })
-                    
+
+                    # NO sentiment analysis here - cache first, then apply sentiment on retrieval
                     formatted_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
                     all_stories_by_type[story_type] = formatted_stories[:n]
                 else:
                     print(f"[news batch] Error fetching {story_type}: {response.status_code}")
                     all_stories_by_type[story_type] = []
-            
-            # Cache the batch data
+
+            # Cache the batch data (without sentiment - will be applied on retrieval)
             mongodb_manager.set_news_cache_batch(
                 user_id,
                 'story_types',
                 all_stories_by_type,
                 {'story_types': story_types, 'count': sum(len(stories) for stories in all_stories_by_type.values())}
             )
-            
-            print(f"[news batch] Cached story types: {list(all_stories_by_type.keys())}")
-            
+
             return jsonify({
                 'success': True,
                 'data': all_stories_by_type,
                 'cached': False
             })
-        
+
         return jsonify({
             'success': False,
             'error': 'Invalid request type or missing parameters'
         }), 400
-        
+
     except requests.exceptions.Timeout:
         return jsonify({
             'success': False,
@@ -1380,6 +1365,7 @@ def get_news_batch():
             'error': str(e)
         }), 500
 
+
 @app.route('/api/news', methods=['GET', 'POST'])
 @login_required
 def get_news():
@@ -1389,7 +1375,7 @@ def get_news():
         if not user_info:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         user_id = user_info['user_id']
-        
+
         # Check user rate limit (once per minute per user)
         can_fetch, wait_time = _check_user_news_rate_limit(user_id)
         if not can_fetch:
@@ -1399,7 +1385,7 @@ def get_news():
                 'rate_limited': True,
                 'wait_time': wait_time
             }), 429
-        
+
         # Check IP rate limit (10 requests per minute per IP)
         can_request, ip_wait_time = _check_tickertick_rate_limit()
         if not can_request:
@@ -1409,7 +1395,7 @@ def get_news():
                 'rate_limited': True,
                 'wait_time': int(ip_wait_time)
             }), 429
-        
+
         # Get parameters from request
         if request.method == 'POST':
             data = request.get_json() or {}
@@ -1423,26 +1409,25 @@ def get_news():
             story_type = request.args.get('story_type')
             n = int(request.args.get('n', 50))
             use_cache = request.args.get('use_cache', 'true').lower() == 'true'
-        
+
         # Validate input
         if not tickers and not story_type:
             return jsonify({
                 'success': False,
                 'error': 'Either tickers or story_type must be provided'
             }), 400
-        
+
         # Limit n to 200 (API max)
         n = min(max(1, n), 200)
-        
+
         # Handle story type queries (use user-based cache)
         if story_type:
             cache_key = _generate_cache_key(None, story_type)
-            
+
             # Check cache if enabled
             if use_cache and cache_key:
                 cached_stories = mongodb_manager.get_news_cache(user_id, cache_key)
                 if cached_stories is not None:
-                    print(f"[news] Returning cached news for story type: {story_type}")
                     return jsonify({
                         'success': True,
                         'stories': cached_stories,
@@ -1450,25 +1435,24 @@ def get_news():
                         'cached': True,
                         'query': _build_tickertick_query(None, story_type)
                     })
-            
+
             # Fetch from API for story type
             query = _build_tickertick_query(None, story_type)
             api_url = 'https://api.tickertick.com/feed'
             params = {'q': query, 'n': n}
-            
-            print(f"[news] Fetching news for story type: {story_type}, query: {query}")
+
             response = requests.get(api_url, params=params, timeout=10)
-            
+
             if response.status_code != 200:
                 print(f"[news] TickerTick API error: {response.status_code} - {response.text}")
                 return jsonify({
                     'success': False,
                     'error': f'TickerTick API error: {response.status_code}'
                 }), response.status_code
-            
+
             data = response.json()
             stories = data.get('stories', [])
-            
+
             # Format stories
             formatted_stories = []
             for story in stories:
@@ -1482,13 +1466,11 @@ def get_news():
                     'description': story.get('description', ''),
                     'tickers': story.get('tickers', story.get('tags', []))
                 })
-            
+
             # Cache the results
             if cache_key:
                 mongodb_manager.set_news_cache(user_id, cache_key, formatted_stories)
-            
-            print(f"[news] Fetched {len(formatted_stories)} stories for story type")
-            
+
             return jsonify({
                 'success': True,
                 'stories': formatted_stories,
@@ -1496,45 +1478,44 @@ def get_news():
                 'cached': False,
                 'query': query
             })
-        
+
         # Handle ticker-based queries (use per-symbol cache)
         if not tickers:
             return jsonify({
                 'success': False,
                 'error': 'No tickers provided'
             }), 400
-        
+
         # Normalize tickers
         normalized_tickers = list(set([t.upper().strip() for t in tickers if t and t.strip()]))
-        
+
         if not normalized_tickers:
             return jsonify({
                 'success': False,
                 'error': 'Invalid tickers provided'
             }), 400
-        
+
         # Check per-symbol cache first
         cached_by_symbol = {}
         symbols_to_fetch = []
-        
+
         if use_cache:
             cached_by_symbol = mongodb_manager.get_multiple_symbols_news_cache(normalized_tickers)
             symbols_to_fetch = [s for s in normalized_tickers if s not in cached_by_symbol]
-            print(f"[news] Cache hit for {len(cached_by_symbol)} symbols, need to fetch {len(symbols_to_fetch)} symbols")
         else:
             symbols_to_fetch = normalized_tickers
-        
+
         # Collect cached stories
         all_stories = []
         story_ids_seen = set()
-        
+
         for symbol, cached_stories in cached_by_symbol.items():
             for story in cached_stories:
                 story_id = story.get('id') or str(story.get('url', ''))
                 if story_id and story_id not in story_ids_seen:
                     all_stories.append(story)
                     story_ids_seen.add(story_id)
-        
+
         # Fetch news for symbols not in cache
         if symbols_to_fetch:
             # Build query for symbols to fetch
@@ -1544,22 +1525,20 @@ def get_news():
                     'success': False,
                     'error': 'Invalid query parameters'
                 }), 400
-            
+
             # Fetch from API
             api_url = 'https://api.tickertick.com/feed'
             params = {
                 'q': query,
                 'n': n * 2  # Fetch more to account for filtering
             }
-            
-            print(f"[news] Fetching news for symbols: {symbols_to_fetch}, query: {query}")
+
             response = requests.get(api_url, params=params, timeout=10)
-            
+
             if response.status_code != 200:
                 print(f"[news] TickerTick API error: {response.status_code} - {response.text}")
                 # If API fails but we have cached data, return cached data
                 if all_stories:
-                    print(f"[news] API failed but returning {len(all_stories)} cached stories")
                     return jsonify({
                         'success': True,
                         'stories': all_stories[:n],
@@ -1572,13 +1551,14 @@ def get_news():
                     'success': False,
                     'error': f'TickerTick API error: {response.status_code}'
                 }), response.status_code
-            
+
             data = response.json()
             fetched_stories = data.get('stories', [])
-            
+
             # Format and cache stories per symbol
             symbol_stories_map = {symbol: [] for symbol in symbols_to_fetch}
-            
+            temp_formatted_stories = []
+
             for story in fetched_stories:
                 story_tickers = story.get('tickers', story.get('tags', []))
                 formatted_story = {
@@ -1591,31 +1571,30 @@ def get_news():
                     'description': story.get('description', ''),
                     'tickers': story_tickers
                 }
-                
+                temp_formatted_stories.append(formatted_story)
+
                 # Add story to each matching symbol's cache
                 for ticker in story_tickers:
                     ticker_upper = ticker.upper()
                     if ticker_upper in symbol_stories_map:
                         symbol_stories_map[ticker_upper].append(formatted_story)
-                
+
                 # Add to all stories if not duplicate
                 story_id = formatted_story.get('id') or str(formatted_story.get('url', ''))
                 if story_id and story_id not in story_ids_seen:
                     all_stories.append(formatted_story)
                     story_ids_seen.add(story_id)
-            
+
+            # NO sentiment analysis here - cache first, then apply sentiment on retrieval
             # Cache stories per symbol
             for symbol, stories_list in symbol_stories_map.items():
                 if stories_list:
                     mongodb_manager.set_symbol_news_cache(symbol, stories_list)
-                    print(f"[news] Cached {len(stories_list)} stories for {symbol}")
-        
+
         # Sort stories by time (newest first) and limit
         all_stories.sort(key=lambda x: x.get('time', 0), reverse=True)
         final_stories = all_stories[:n]
-        
-        print(f"[news] Returning {len(final_stories)} stories ({len(cached_by_symbol)} from cache, {len(symbols_to_fetch)} fetched)")
-        
+
         return jsonify({
             'success': True,
             'stories': final_stories,
@@ -1623,7 +1602,7 @@ def get_news():
             'cached': len(symbols_to_fetch) == 0,  # Fully cached if no API calls
             'query': _build_tickertick_query(normalized_tickers, None)
         })
-        
+
     except requests.exceptions.Timeout:
         return jsonify({
             'success': False,
@@ -1647,16 +1626,15 @@ def get_news():
 def get_fields_metadata():
     """Get field metadata for the dynamic filter builder"""
     try:
-        print("🔍 Loading field metadata from static/fields.json...")
-        
+
         # Check if file exists
         import os
         if not os.path.exists('static/fields.json'):
             raise FileNotFoundError("fields.json file not found in static directory")
-        
+
         with open('static/fields.json', 'r', encoding='utf-8') as f:
             fields_data = json.load(f)
-        
+
         # Validate the data structure
         if 'fields' not in fields_data:
             raise ValueError("Invalid fields.json: missing 'fields' key")
@@ -1664,9 +1642,7 @@ def get_fields_metadata():
             raise ValueError("Invalid fields.json: missing 'groups' key")
         if 'grouped_fields' not in fields_data:
             raise ValueError("Invalid fields.json: missing 'grouped_fields' key")
-        
-        print(f"✅ Loaded {len(fields_data['fields'])} fields in {len(fields_data['groups'])} groups")
-        
+
         return jsonify({
             'success': True,
             'data': fields_data
@@ -1693,83 +1669,52 @@ def get_fields_metadata():
             'error': error_msg
         }), 500
 
+
 @app.route('/api/screener', methods=['POST'])
 def dynamic_screener():
     """Dynamic screener API with flexible filter builder"""
     try:
         data = request.get_json()
-        
-        # Debug logging
-        print(f"🔍 Received dynamic screener request: {json.dumps(data, indent=2)}")
-        
+
         # Validate request using Pydantic
         try:
-            # First check the raw data structure
-            print(f"🔍 Raw data validation:")
-            print(f"   Type: {type(data)}")
-            if isinstance(data, dict):
-                print(f"   Keys: {list(data.keys())}")
-                if 'filter_groups' in data:
-                    print(f"   filter_groups type: {type(data['filter_groups'])}")
-                    if isinstance(data['filter_groups'], list):
-                        print(f"   filter_groups length: {len(data['filter_groups'])}")
-                    else:
-                        print(f"   ❌ filter_groups is not a list: {data['filter_groups']}")
-            
             screener_request = ScreenerRequest(**data)
-            print(f"✅ Request validation successful")
-            print(f"📋 Filter groups: {len(screener_request.filter_groups)}")
-            for i, group in enumerate(screener_request.filter_groups):
-                print(f"   Group {i}: {len(group.rules)} rules, enabled={group.enabled}")
-                for j, rule in enumerate(group.rules):
-                    print(f"     Rule {j}: {rule.left_operand.value} {rule.operator} {rule.right_operand.value}")
         except ValidationError as e:
-            print(f"❌ Request validation failed: {e}")
-            print(f"   Validation errors: {e.errors()}")
             return jsonify({
                 'success': False,
                 'message': 'Invalid request format',
                 'errors': e.errors()
             }), 400
         except Exception as e:
-            print(f"❌ Unexpected error during validation: {e}")
-            import traceback
-            traceback.print_exc()
             return jsonify({
                 'success': False,
                 'message': f'Unexpected validation error: {str(e)}'
             }), 500
-        
+
         # Get filter serializer
         serializer = get_filter_serializer()
-        
+
         # Use dynamic TradingView Query serialization
-        print(f"🚀 Building dynamic TradingView query...")
         try:
             query = serializer.serialize_screener_request(screener_request)
-            print(f"📋 Query built successfully with {len(screener_request.filter_groups)} filter groups")
-            
+
             # Execute the query
-            print(f"📡 Executing TradingView query...")
             columns, results_df = query.get_scanner_data()
-            
-            print(f"✅ Query executed successfully: {len(results_df)} results")
 
         except Exception as query_error:
-            print(f"❌ Error building or executing TradingView query: {query_error}")
             return jsonify({
                 'success': False,
                 'message': f'Error processing dynamic screener request: {str(query_error)}',
                 'count': 0
             }), 500
-        
+
         if results_df.empty:
             return jsonify({
                 'success': False,
                 'message': 'No symbols found matching the criteria.',
                 'count': 0
             })
-        
+
         # Apply custom column selection if specified
         if screener_request.columns:
             available_columns = [col for col in screener_request.columns if col in results_df.columns]
@@ -1779,50 +1724,50 @@ def dynamic_screener():
                 display_df = results_df
         else:
             display_df = results_df
-        
+
         # Apply custom sorting if specified
         if screener_request.sort_by and screener_request.sort_by in display_df.columns:
             display_df = display_df.sort_values(
-                screener_request.sort_by, 
+                screener_request.sort_by,
                 ascending=screener_request.sort_ascending
             )
-        
+
         # Apply limit
         if screener_request.limit and screener_request.limit > 0:
             display_df = display_df.head(screener_request.limit)
-        
+
         # Create TradingView links (reuse existing logic)
         def create_tradingview_link(row):
             symbol = row['name']
             exchange = row['exchange']
-            
+
             exchange_mapping = {
                 'NASDAQ': 'NASDAQ', 'NYSE': 'NYSE', 'NYSE AMERICAN': 'NYSEAMERICAN',
                 'NYSE ARCA': 'NYSEARCA', 'CBOE': 'CBOE', 'CBOE BZX': 'CBOEBZX',
                 'CBOE BYX': 'CBOEBYX', 'CBOE EDGX': 'CBOEEDGX', 'CBOE EDGA': 'CBOEEDGA',
                 'IEX': 'IEX', 'OTC': 'OTC', 'OTC MARKETS': 'OTCMARKETS'
             }
-            
+
             tv_exchange = exchange_mapping.get(exchange, exchange)
             symbol_pair = f"{tv_exchange}-{symbol}"
             encoded_symbol = urllib.parse.quote(symbol_pair)
-            
+
             return f"https://www.tradingview.com/symbols/{encoded_symbol}/?utm_source=androidapp&utm_medium=share"
-        
+
         # Add TradingView links
         display_df['tradingview_link'] = display_df.apply(create_tradingview_link, axis=1)
-        
+
         # Create CSV export (without tradingview_link column)
         csv_export_df = display_df.drop(columns=['tradingview_link'])
         csv_buffer = io.StringIO()
         csv_export_df.to_csv(csv_buffer, index=False)
         csv_buffer.seek(0)
-        
+
         # Prepare response data (replace NaN with None)
         all_data_df = display_df.replace({pd.NA: None, float('nan'): None, math.nan: None})
         all_data = all_data_df.to_dict(orient='records')
         display_columns = [col for col in display_df.columns if col != 'tradingview_link']
-        
+
         response_data = ScreenerResponse(
             success=True,
             count=len(display_df),
@@ -1832,9 +1777,9 @@ def dynamic_screener():
             csv_data=csv_buffer.getvalue(),
             filename=f"dynamic_screener_results_{datetime.today().strftime('%Y%m%d')}.csv"
         )
-        
+
         return jsonify(response_data.dict())
-        
+
     except Exception as e:
         print(f"❌ Error in dynamic screener: {e}")
         return jsonify({
@@ -1843,14 +1788,12 @@ def dynamic_screener():
             'count': 0
         }), 500
 
+
 @app.route('/api/query', methods=['POST'])
 def api_query():
     try:
         data = request.get_json()
-        
-        # Debug logging
-        print(f"🔍 Received query data: {data}")
-        
+
         # Extract parameters from request
         us_exchanges_only = data.get('us_exchanges_only', True)
         min_price = data.get('min_price')
@@ -1866,27 +1809,7 @@ def api_query():
         max_bb_percent_b = data.get('max_bb_percent_b')
         filter_out_otc = data.get('filter_out_otc', True)
         bullish_candlestick_patterns_only = data.get('bullish_candlestick_patterns_only', False)
-        
-        # Debug logging for extracted parameters
-        print(f"📊 Extracted parameters:")
-        print(f"   min_change: {min_change} (type: {type(min_change)})")
-        print(f"   max_change: {max_change} (type: {type(max_change)})")
-        print(f"   min_rsi: {min_rsi} (type: {type(min_rsi)})")
-        print(f"   max_rsi: {max_rsi} (type: {type(max_rsi)})")
-        print(f"   min_bb_percent_b: {min_bb_percent_b} (type: {type(min_bb_percent_b)})")
-        print(f"   max_bb_percent_b: {max_bb_percent_b} (type: {type(max_bb_percent_b)})")
-        
 
-        
-        # Debug logging before calling query_by_params
-        print(f"🚀 Calling query_by_params with:")
-        print(f"   min_change: {min_change}")
-        print(f"   max_change: {max_change}")
-        print(f"   min_rsi: {min_rsi}")
-        print(f"   max_rsi: {max_rsi}")
-        print(f"   min_bb_percent_b: {min_bb_percent_b}")
-        print(f"   max_bb_percent_b: {max_bb_percent_b}")
-        
         # Call the existing query function
         results = query_by_params(
             us_exchanges_only=us_exchanges_only,
@@ -1904,19 +1827,19 @@ def api_query():
             filter_out_otc=filter_out_otc,
             bullish_candlestick_patterns_only=bullish_candlestick_patterns_only
         )
-        
+
         if results.empty:
             return jsonify({
                 'success': False,
                 'message': 'No symbols found matching the criteria.',
                 'count': 0
             })
-        
+
         # Create TradingView links for stock names
         def create_tradingview_link(row):
             symbol = row['name']
             exchange = row['exchange']
-            
+
             # Map exchange names to TradingView format
             exchange_mapping = {
                 'NASDAQ': 'NASDAQ',
@@ -1938,33 +1861,33 @@ def api_query():
                 'BATS': 'BATS',
                 'INSTINET': 'INSTINET'
             }
-            
+
             tv_exchange = exchange_mapping.get(exchange, exchange)
-            
+
             # Create a more mobile-friendly TradingView link
             # Use the symbol format that works better with mobile apps
             # Format: EXCHANGE-SYMBOL (with hyphen, not colon)
             symbol_pair = f"{tv_exchange}-{symbol}"
             encoded_symbol = urllib.parse.quote(symbol_pair)
-            
+
             # Use the format that works with mobile apps, including UTM parameters
             return f"https://www.tradingview.com/symbols/{encoded_symbol}/?utm_source=androidapp&utm_medium=share"
-        
+
         # Add TradingView links to the results
         results['tradingview_link'] = results.apply(create_tradingview_link, axis=1)
-        
+
         # Create CSV buffer (without tradingview_link column for cleaner CSV)
         csv_export_df = results.drop(columns=['tradingview_link'])
         csv_buffer = io.StringIO()
         csv_export_df.to_csv(csv_buffer, index=False)
         csv_buffer.seek(0)
-        
+
         # Prepare all data (replace NaN/NA with None)
         all_data_df = results.replace({pd.NA: None, float('nan'): None, math.nan: None})
         all_data = all_data_df.to_dict(orient='records')
         # Remove tradingview_link column from display columns but keep it in the data for links
         display_columns = [col for col in results.columns if col != 'tradingview_link']
-        
+
         # Create response with CSV data and all results
         response_data = {
             'success': True,
@@ -1975,9 +1898,9 @@ def api_query():
             'data': all_data,
             'columns': display_columns
         }
-        
+
         return jsonify(response_data)
-        
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -1985,30 +1908,32 @@ def api_query():
             'count': 0
         }), 500
 
+
 @app.route('/api/download', methods=['POST'])
 def download_csv():
     try:
         data = request.get_json()
         csv_data = data.get('csv_data')
         filename = data.get('filename', 'screener_results.csv')
-        
+
         if not csv_data:
             return jsonify({'error': 'No CSV data provided'}), 400
-        
+
         # Create BytesIO buffer for file download
         buffer = io.BytesIO()
         buffer.write(csv_data.encode('utf-8'))
         buffer.seek(0)
-        
+
         return send_file(
             buffer,
             as_attachment=True,
             download_name=filename,
             mimetype='text/csv'
         )
-        
+
     except Exception as e:
         return jsonify({'error': f'Error creating download: {str(e)}'}), 500
+
 
 @app.route('/api/screeners', methods=['GET'])
 def get_screeners():
@@ -2018,7 +1943,7 @@ def get_screeners():
         user_id = user_info['user_id'] if user_info else None
         include_public = request.args.get('include_public', 'true').lower() == 'true'
         search_term = request.args.get('search', '')
-        
+
         if search_term:
             screeners = mongodb_manager.search_screeners(search_term)
             # Apply user filtering to search results
@@ -2028,7 +1953,7 @@ def get_screeners():
                 screeners = [s for s in screeners if s.get('is_public', False)]
         else:
             screeners = mongodb_manager.get_all_screeners(user_id, include_public)
-        
+
         return jsonify({
             'success': True,
             'screeners': screeners
@@ -2039,12 +1964,13 @@ def get_screeners():
             'message': f'Error retrieving screeners: {str(e)}'
         }), 500
 
+
 @app.route('/api/screeners', methods=['POST'])
 def save_screener():
     """Save a new screener"""
     try:
         data = request.get_json()
-        
+
         # Validate required fields
         required_fields = ['name', 'owner', 'params']
         for field in required_fields:
@@ -2053,12 +1979,12 @@ def save_screener():
                     'success': False,
                     'message': f'Missing required field: {field}'
                 }), 400
-        
+
         # Handle optional tags
         tags = data.get('tags', '').strip()
         if not tags:
             tags = ''  # Empty string for no tags
-        
+
         # Get user info for authentication
         user_info = get_user_info()
         if not user_info:
@@ -2066,10 +1992,10 @@ def save_screener():
                 'success': False,
                 'message': 'Authentication required to save screeners'
             }), 401
-        
+
         # Get public/private setting
         is_public = data.get('is_public', False)
-        
+
         # Save screener with user info
         screener_id = mongodb_manager.save_screener(
             name=data['name'],
@@ -2079,7 +2005,7 @@ def save_screener():
             user_id=user_info['user_id'],
             is_public=is_public
         )
-        
+
         return jsonify({
             'success': True,
             'message': 'Screener saved successfully!',
@@ -2090,6 +2016,7 @@ def save_screener():
             'success': False,
             'message': f'Error saving screener: {str(e)}'
         }), 500
+
 
 @app.route('/api/screeners/<screener_id>', methods=['GET'])
 def get_screener(screener_id):
@@ -2112,13 +2039,14 @@ def get_screener(screener_id):
             'message': f'Error retrieving screener: {str(e)}'
         }), 500
 
+
 @app.route('/api/screeners/<screener_id>', methods=['DELETE'])
 def delete_screener(screener_id):
     """Delete a screener"""
     try:
         data = request.get_json()
         confirmation_name = data.get('confirmation_name', '')
-        
+
         # Get the screener to check the name
         screener = mongodb_manager.get_screener_by_id(screener_id)
         if not screener:
@@ -2126,14 +2054,14 @@ def delete_screener(screener_id):
                 'success': False,
                 'message': 'Screener not found'
             }), 404
-        
+
         # Check if confirmation name matches
         if confirmation_name != screener['name']:
             return jsonify({
                 'success': False,
                 'message': 'Confirmation name does not match screener name'
             }), 400
-        
+
         # Delete the screener
         success = mongodb_manager.delete_screener(screener_id)
         if success:
@@ -2152,16 +2080,9 @@ def delete_screener(screener_id):
             'message': f'Error deleting screener: {str(e)}'
         }), 500
 
+
 if __name__ == '__main__':
-    # Debug MongoDB connection
-    print("=== MongoDB Connection Debug ===")
-    print(f"MONGODB_URL: {os.getenv('MONGODB_URL', 'Not set')[:50]}...")
-    print(f"MONGODB_DB: {os.getenv('MONGODB_DB', 'Not set')}")
-    print(f"USE_FALLBACK_ONLY: {os.getenv('USE_FALLBACK_ONLY', 'false')}")
-    print(f"USE_FILE_STORAGE: {os.getenv('USE_FILE_STORAGE', 'false')}")
-    print("================================")
-    
     try:
         app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
     except KeyboardInterrupt:
-        print("✅ Application stopped")
+        pass
