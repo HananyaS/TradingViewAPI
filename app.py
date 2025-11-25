@@ -2,6 +2,7 @@ import io
 import json
 import math
 import os
+import threading
 import time
 import urllib.parse
 from datetime import datetime
@@ -12,6 +13,8 @@ from bson import ObjectId
 from flask import Flask, request, jsonify, send_file, session, redirect
 from flask_cors import CORS
 from pydantic import ValidationError
+import smtplib
+from email.mime.text import MIMEText
 
 from auth_tokens import generate_token, verify_token, revoke_token
 from filter_schemas import ScreenerRequest, ScreenerResponse, FieldMetadata
@@ -74,6 +77,16 @@ _filter_serializer = None
 
 register_react_routes(app)
 
+# Email alert configuration
+ALERT_EMAIL_SENDER = os.getenv('ALERT_EMAIL_SENDER')
+SMTP_SERVER = os.getenv('SMTP_SERVER')
+SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
+SMTP_USERNAME = os.getenv('SMTP_USERNAME')
+SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
+SMTP_USE_TLS = os.getenv('SMTP_USE_TLS', 'true').lower() == 'true'
+EMAIL_NOTIFICATIONS_ENABLED = bool(ALERT_EMAIL_SENDER and SMTP_SERVER)
+ALERT_NOTIFICATION_METHODS = {'in_app', 'email', 'both'}
+
 
 def get_filter_serializer():
     """Get or create the filter serializer with field metadata"""
@@ -94,6 +107,37 @@ def get_filter_serializer():
             _filter_serializer = FilterSerializer({})
 
     return _filter_serializer
+
+
+def _should_send_email(notification_method: str) -> bool:
+    """Check if the alert's notification method includes email delivery"""
+    if not notification_method:
+        return False
+    return notification_method in ('email', 'both')
+
+
+def send_alert_email(to_email: str, subject: str, body: str) -> bool:
+    """Send an email notification if SMTP is configured"""
+    if not EMAIL_NOTIFICATIONS_ENABLED or not to_email:
+        return False
+
+    try:
+        msg = MIMEText(body)
+        msg['Subject'] = subject
+        msg['From'] = ALERT_EMAIL_SENDER
+        msg['To'] = to_email
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            if SMTP_USE_TLS:
+                server.starttls()
+            if SMTP_USERNAME and SMTP_PASSWORD:
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(ALERT_EMAIL_SENDER, [to_email], msg.as_string())
+
+        return True
+    except Exception as e:
+        print(f"Error sending alert email: {e}")
+        return False
 
 
 @app.route('/api/test-filter', methods=['POST'])
@@ -334,7 +378,7 @@ def update_user_profile():
         return jsonify({'success': False, 'error': 'Authentication required'}), 401
     user_id = user_info['user_id']
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         profile_data = {}
 
         if 'name' in data:
@@ -451,7 +495,7 @@ def save_user_trade():
         return jsonify({'success': False, 'error': 'Authentication required'}), 401
     user_id = user_info['user_id']
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
 
         # Validate required fields
         required_fields = ['symbol', 'type', 'price', 'quantity', 'date']
@@ -901,6 +945,230 @@ def _generate_cache_key(tickers=None, story_type=None):
         normalized = sorted([t.upper().strip() for t in tickers if t and t.strip()])
         return f"tickers:{','.join(normalized)}"
     return None
+
+
+# Price Alerts API Endpoints
+@app.route('/api/alerts', methods=['GET'])
+@login_required
+def get_alerts():
+    """Get all alerts for the current user"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        active_only = request.args.get('active_only', 'false').lower() == 'true'
+        alerts = mongodb_manager.get_user_alerts(user_info['user_id'], active_only=active_only)
+        
+        return jsonify({
+            'success': True,
+            'alerts': alerts
+        })
+    except Exception as e:
+        print(f"Error getting alerts: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/alerts', methods=['POST'])
+@login_required
+def create_alert():
+    """Create a new price alert"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data.get('symbol'):
+            return jsonify({'success': False, 'error': 'Symbol is required'}), 400
+
+        notification_method = data.get('notification_method', 'in_app')
+        if notification_method not in ALERT_NOTIFICATION_METHODS:
+            return jsonify({'success': False, 'error': 'Invalid notification method'}), 400
+        data['notification_method'] = notification_method
+        
+        alert_id = mongodb_manager.save_price_alert(user_info['user_id'], data)
+        
+        if alert_id:
+            return jsonify({
+                'success': True,
+                'alert_id': alert_id,
+                'message': 'Alert created successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create alert'}), 500
+            
+    except Exception as e:
+        print(f"Error creating alert: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/alerts/<alert_id>', methods=['GET'])
+@login_required
+def get_alert(alert_id):
+    """Get a specific alert by ID"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        alert = mongodb_manager.get_alert(user_info['user_id'], alert_id)
+        
+        if alert:
+            return jsonify({
+                'success': True,
+                'alert': alert
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Alert not found'}), 404
+            
+    except Exception as e:
+        print(f"Error getting alert: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/alerts/<alert_id>', methods=['PUT'])
+@login_required
+def update_alert(alert_id):
+    """Update an existing alert"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        data = request.get_json()
+
+        if 'notification_method' in data:
+            if data['notification_method'] not in ALERT_NOTIFICATION_METHODS:
+                return jsonify({'success': False, 'error': 'Invalid notification method'}), 400
+        
+        success = mongodb_manager.update_price_alert(user_info['user_id'], alert_id, data)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Alert updated successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Alert not found or update failed'}), 404
+            
+    except Exception as e:
+        print(f"Error updating alert: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/alerts/<alert_id>', methods=['DELETE'])
+@login_required
+def delete_alert(alert_id):
+    """Delete an alert"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        success = mongodb_manager.delete_price_alert(user_info['user_id'], alert_id)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Alert deleted successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Alert not found'}), 404
+            
+    except Exception as e:
+        print(f"Error deleting alert: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/alerts/notifications', methods=['GET'])
+@login_required
+def get_alert_notifications():
+    """Get alert notifications for the current user"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        if mongodb_manager.client is None:
+            return jsonify({'success': True, 'notifications': []})
+        
+        notifications_collection = mongodb_manager.db.alert_notifications
+        notifications = list(notifications_collection.find({
+            'user_id': user_info['user_id']
+        }).sort('created_at', -1).limit(50))
+        
+        # Convert ObjectId to string and datetime to ISO
+        for notif in notifications:
+            notif['_id'] = str(notif['_id'])
+            if notif.get('created_at'):
+                notif['created_at'] = notif['created_at'].isoformat()
+        
+        return jsonify({
+            'success': True,
+            'notifications': notifications
+        })
+    except Exception as e:
+        print(f"Error getting notifications: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/alerts/notifications/<notification_id>/read', methods=['PUT'])
+@login_required
+def mark_notification_read(notification_id):
+    """Mark a notification as read"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        if mongodb_manager.client is None:
+            return jsonify({'success': False, 'error': 'Database not available'}), 500
+        
+        notifications_collection = mongodb_manager.db.alert_notifications
+        result = notifications_collection.update_one(
+            {'_id': ObjectId(notification_id), 'user_id': user_info['user_id']},
+            {'$set': {'read': True}}
+        )
+        
+        if result.modified_count > 0:
+            return jsonify({'success': True, 'message': 'Notification marked as read'})
+        else:
+            return jsonify({'success': False, 'error': 'Notification not found'}), 404
+            
+    except Exception as e:
+        print(f"Error marking notification as read: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/alerts/notifications/read-all', methods=['PUT'])
+@login_required
+def mark_all_notifications_read():
+    """Mark all notifications as read for the current user"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        if mongodb_manager.client is None:
+            return jsonify({'success': False, 'error': 'Database not available'}), 500
+        
+        notifications_collection = mongodb_manager.db.alert_notifications
+        result = notifications_collection.update_many(
+            {'user_id': user_info['user_id'], 'read': False},
+            {'$set': {'read': True}}
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': f'{result.modified_count} notifications marked as read'
+        })
+            
+    except Exception as e:
+        print(f"Error marking all notifications as read: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/news/unified', methods=['POST'])
@@ -2080,6 +2348,166 @@ def delete_screener(screener_id):
             'message': f'Error deleting screener: {str(e)}'
         }), 500
 
+
+# Background worker to check price alerts
+def check_price_alerts_worker():
+    """Background worker that checks price alerts every 30 seconds"""
+    while True:
+        try:
+            time.sleep(30)  # Check every 30 seconds
+            
+            # Get all active alerts grouped by symbol
+            if mongodb_manager.client is None:
+                continue
+            
+            alerts_collection = mongodb_manager.db.price_alerts
+            active_alerts = list(alerts_collection.find({'is_active': True}))
+            
+            if not active_alerts:
+                continue
+            
+            # Group alerts by symbol
+            symbols_by_alert = {}
+            for alert in active_alerts:
+                symbol = alert.get('symbol', '').upper().strip()
+                if symbol:
+                    if symbol not in symbols_by_alert:
+                        symbols_by_alert[symbol] = []
+                    symbols_by_alert[symbol].append(alert)
+            
+            if not symbols_by_alert:
+                continue
+            
+            # Fetch current prices for all symbols
+            symbols = list(symbols_by_alert.keys())
+            try:
+                price_data = fetch_symbol_quotes(symbols)
+            except Exception as e:
+                print(f"Error fetching prices for alerts: {e}")
+                continue
+            
+            # Check each alert
+            for symbol, alerts in symbols_by_alert.items():
+                if symbol not in price_data:
+                    continue
+                
+                current_price = price_data[symbol].get('current', 0)
+                current_change_percent = price_data[symbol].get('changePercent', 0)
+                
+                if current_price <= 0:
+                    continue
+                
+                for alert in alerts:
+                    try:
+                        alert_type = alert.get('alert_type', 'price')
+                        condition = alert.get('condition', 'above')
+                        threshold = alert.get('threshold', 0)
+                        percentage_change = alert.get('percentage_change')
+                        alert_id = str(alert['_id'])
+                        
+                        triggered = False
+                        
+                        if alert_type == 'price':
+                            if condition == 'above' and current_price >= threshold:
+                                triggered = True
+                            elif condition == 'below' and current_price <= threshold:
+                                triggered = True
+                            elif condition == 'equals' and abs(current_price - threshold) < 0.01:
+                                triggered = True
+                        
+                        elif alert_type == 'percentage':
+                            if percentage_change is not None:
+                                if condition == 'above' and current_change_percent >= percentage_change:
+                                    triggered = True
+                                elif condition == 'below' and current_change_percent <= percentage_change:
+                                    triggered = True
+                        
+                        if triggered:
+                            # Mark alert as triggered
+                            mongodb_manager.mark_alert_triggered(
+                                alert_id,
+                                current_price,
+                                current_change_percent
+                            )
+                            
+                            # Store notification in database for in-app display
+                            notifications_collection = mongodb_manager.db.alert_notifications
+                            notification_method = alert.get('notification_method', 'in_app')
+
+                            notification = {
+                                'user_id': alert['user_id'],
+                                'alert_id': alert_id,
+                                'symbol': symbol,
+                                'alert_type': alert_type,
+                                'message': f"{symbol} {alert_type} alert triggered: ${current_price:.2f}",
+                                'current_price': current_price,
+                                'current_change_percent': current_change_percent,
+                                'created_at': datetime.utcnow(),
+                                'read': False
+                            }
+                            notifications_collection.insert_one(notification)
+
+                            # Send email notification if configured
+                            if _should_send_email(notification_method):
+                                user_profile = mongodb_manager.get_user_profile(alert['user_id'])
+                                user_email = (user_profile or {}).get('email') if user_profile else None
+                                if user_email:
+                                    subject = f"{symbol} price alert triggered"
+                                    body_lines = [
+                                        f"Symbol: {symbol}",
+                                        f"Alert Type: {'Price' if alert_type == 'price' else 'Percentage Change'}",
+                                        f"Condition: {condition}",
+                                        f"Current Price: ${current_price:.2f}",
+                                    ]
+                                    if alert_type == 'price':
+                                        body_lines.append(f"Threshold: ${threshold:.2f}")
+                                    else:
+                                        body_lines.append(f"Change Percent Threshold: {percentage_change}%")
+                                        body_lines.append(f"Current Change Percent: {current_change_percent}%")
+
+                                    if alert.get('notes'):
+                                        body_lines.append(f"Notes: {alert['notes']}")
+
+                                    body_lines.append("\nThis alert was generated by your TradingView Screener app.")
+
+                                    send_alert_email(
+                                        user_email,
+                                        subject,
+                                        "\n".join(body_lines)
+                                    )
+                            
+                    except Exception as e:
+                        print(f"Error checking alert {alert.get('_id')}: {e}")
+                        continue
+                        
+        except Exception as e:
+            print(f"Error in price alerts worker: {e}")
+            time.sleep(60)  # Wait longer on error
+
+
+# Start background worker thread
+_alert_worker_thread = None
+
+def start_alert_worker():
+    """Start the background alert checking worker"""
+    global _alert_worker_thread
+    if _alert_worker_thread is None or not _alert_worker_thread.is_alive():
+        _alert_worker_thread = threading.Thread(target=check_price_alerts_worker, daemon=True)
+        _alert_worker_thread.start()
+        print("✅ Price alerts worker started")
+
+# Start alert worker when module is imported (works with both dev and production)
+# Use a small delay to ensure MongoDB is connected first
+def _delayed_start_worker():
+    """Start worker after a short delay to ensure MongoDB is ready"""
+    import threading
+    def delayed():
+        time.sleep(2)  # Wait 2 seconds for MongoDB connection
+        start_alert_worker()
+    threading.Thread(target=delayed, daemon=True).start()
+
+# Start worker in background
+_delayed_start_worker()
 
 if __name__ == '__main__':
     try:

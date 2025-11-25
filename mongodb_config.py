@@ -1565,5 +1565,194 @@ class MongoDBManager:
             print(f"Error getting user stats: {e}")
             return {'saved_queries': 0, 'watchlist_items': 0, 'journal_entries': 0}
 
+    # Price Alerts Methods
+    def save_price_alert(self, user_id, alert_data):
+        """Save a new price alert"""
+        try:
+            if self.client is None:
+                return None
+            
+            alerts_collection = self.db.price_alerts
+            alert_doc = {
+                'user_id': user_id,
+                'symbol': alert_data.get('symbol', '').upper().strip(),
+                'alert_type': alert_data.get('alert_type', 'price'),  # price, percentage, volume, technical
+                'condition': alert_data.get('condition', 'above'),  # above, below, equals
+                'threshold': alert_data.get('threshold', 0),
+                'percentage_change': alert_data.get('percentage_change'),
+                'is_active': alert_data.get('is_active', True),
+                'created_at': datetime.utcnow(),
+                'last_triggered': None,
+                'trigger_count': 0,
+                'notification_method': alert_data.get('notification_method', 'in_app'),  # in_app, email
+                'notes': alert_data.get('notes', '')
+            }
+            
+            result = alerts_collection.insert_one(alert_doc)
+            return str(result.inserted_id)
+            
+        except Exception as e:
+            print(f"Error saving price alert: {e}")
+            return None
+
+    def get_user_alerts(self, user_id, active_only=False):
+        """Get all alerts for a user"""
+        try:
+            if self.client is None:
+                return []
+            
+            alerts_collection = self.db.price_alerts
+            query = {'user_id': user_id}
+            if active_only:
+                query['is_active'] = True
+            
+            alerts = list(alerts_collection.find(query).sort('created_at', -1))
+            
+            # Convert ObjectId to string
+            for alert in alerts:
+                alert['_id'] = str(alert['_id'])
+                if alert.get('created_at'):
+                    alert['created_at'] = alert['created_at'].isoformat()
+                if alert.get('last_triggered'):
+                    alert['last_triggered'] = alert['last_triggered'].isoformat()
+            
+            return alerts
+            
+        except Exception as e:
+            print(f"Error getting user alerts: {e}")
+            return []
+
+    def get_alert(self, user_id, alert_id):
+        """Get a specific alert by ID"""
+        try:
+            if self.client is None:
+                return None
+            
+            alerts_collection = self.db.price_alerts
+            alert = alerts_collection.find_one({
+                '_id': ObjectId(alert_id),
+                'user_id': user_id
+            })
+            
+            if alert:
+                alert['_id'] = str(alert['_id'])
+                if alert.get('created_at'):
+                    alert['created_at'] = alert['created_at'].isoformat()
+                if alert.get('last_triggered'):
+                    alert['last_triggered'] = alert['last_triggered'].isoformat()
+            
+            return alert
+            
+        except Exception as e:
+            print(f"Error getting alert: {e}")
+            return None
+
+    def update_price_alert(self, user_id, alert_id, update_data):
+        """Update an existing price alert"""
+        try:
+            if self.client is None:
+                return False
+            
+            alerts_collection = self.db.price_alerts
+            
+            # Prepare update document
+            update_doc = {}
+            if 'symbol' in update_data:
+                update_doc['symbol'] = update_data['symbol'].upper().strip()
+            if 'alert_type' in update_data:
+                update_doc['alert_type'] = update_data['alert_type']
+            if 'condition' in update_data:
+                update_doc['condition'] = update_data['condition']
+            if 'threshold' in update_data:
+                update_doc['threshold'] = update_data['threshold']
+            if 'percentage_change' in update_data:
+                update_doc['percentage_change'] = update_data['percentage_change']
+            if 'is_active' in update_data:
+                update_doc['is_active'] = update_data['is_active']
+            if 'notification_method' in update_data:
+                update_doc['notification_method'] = update_data['notification_method']
+            if 'notes' in update_data:
+                update_doc['notes'] = update_data['notes']
+            
+            if not update_doc:
+                return False
+            
+            result = alerts_collection.update_one(
+                {'_id': ObjectId(alert_id), 'user_id': user_id},
+                {'$set': update_doc}
+            )
+            
+            return result.matched_count > 0
+            
+        except Exception as e:
+            print(f"Error updating price alert: {e}")
+            return False
+
+    def delete_price_alert(self, user_id, alert_id):
+        """Delete a price alert"""
+        try:
+            if self.client is None:
+                return False
+            
+            alerts_collection = self.db.price_alerts
+            result = alerts_collection.delete_one({
+                '_id': ObjectId(alert_id),
+                'user_id': user_id
+            })
+            
+            return result.deleted_count > 0
+            
+        except Exception as e:
+            print(f"Error deleting price alert: {e}")
+            return False
+
+    def get_active_alerts_for_symbols(self, symbols):
+        """Get all active alerts for a list of symbols (for checking)"""
+        try:
+            if self.client is None:
+                return []
+            
+            alerts_collection = self.db.price_alerts
+            alerts = list(alerts_collection.find({
+                'symbol': {'$in': [s.upper().strip() for s in symbols]},
+                'is_active': True
+            }))
+            
+            # Convert ObjectId to string
+            for alert in alerts:
+                alert['_id'] = str(alert['_id'])
+                alert['user_id'] = str(alert['user_id'])
+            
+            return alerts
+            
+        except Exception as e:
+            print(f"Error getting active alerts for symbols: {e}")
+            return []
+
+    def mark_alert_triggered(self, alert_id, current_price, current_change_percent=None):
+        """Mark an alert as triggered and update trigger count"""
+        try:
+            if self.client is None:
+                return False
+            
+            alerts_collection = self.db.price_alerts
+            result = alerts_collection.update_one(
+                {'_id': ObjectId(alert_id)},
+                {
+                    '$set': {
+                        'last_triggered': datetime.utcnow(),
+                        'triggered_price': current_price,
+                        'triggered_change_percent': current_change_percent
+                    },
+                    '$inc': {'trigger_count': 1}
+                }
+            )
+            
+            return result.modified_count > 0
+            
+        except Exception as e:
+            print(f"Error marking alert as triggered: {e}")
+            return False
+
 # Global MongoDB manager instance
 mongodb_manager = MongoDBManager() 

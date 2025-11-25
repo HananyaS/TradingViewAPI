@@ -6,6 +6,7 @@ import {
   DocumentTextIcon,
   ChartBarIcon,
   NewspaperIcon,
+  BellIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
 
@@ -16,6 +17,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     { name: 'Strategies', href: '/', icon: HomeIcon },
     { name: 'Watchlist', href: '/watchlist', icon: BookmarkIcon },
     { name: 'Journal', href: '/journal', icon: DocumentTextIcon },
+    { name: 'Alerts', href: '/alerts', icon: BellIcon },
     { name: 'News', href: '/news', icon: NewspaperIcon },
     { name: 'Analysis', href: '/analysis', icon: ChartBarIcon },
   ];

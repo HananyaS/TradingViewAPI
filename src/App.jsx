@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 import Home from './pages/Home';
 import Watchlist from './pages/Watchlist';
 import Journal from './pages/Journal';
+import Alerts from './pages/Alerts';
 import Profile from './pages/Profile';
 import Analysis from './pages/Analysis';
 import News from './pages/News';
@@ -78,6 +79,7 @@ function AppRoutes() {
         <Route index element={<Home />} />
         <Route path="watchlist" element={<Watchlist />} />
         <Route path="journal" element={<Journal />} />
+        <Route path="alerts" element={<Alerts />} />
         <Route path="news" element={<News />} />
         <Route path="analysis" element={<Analysis />} />
         <Route path="profile" element={<Profile />} />
