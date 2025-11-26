@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import urllib.parse
+from collections import defaultdict
 from datetime import datetime
 
 import pandas as pd
@@ -945,6 +946,394 @@ def _generate_cache_key(tickers=None, story_type=None):
         normalized = sorted([t.upper().strip() for t in tickers if t and t.strip()])
         return f"tickers:{','.join(normalized)}"
     return None
+
+
+# =======================
+# Analytics Helper Utils
+# =======================
+def _safe_float(value, default=None):
+    try:
+        if value in (None, ''):
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_datetime(value):
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            if value.endswith('Z'):
+                value = value.replace('Z', '+00:00')
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _normalize_trade_record(trade):
+    symbol = (trade.get('symbol') or '').upper().strip()
+    if not symbol:
+        return None
+
+    quantity = _safe_float(trade.get('quantity') or trade.get('qty') or trade.get('shares'), 0)
+    if not quantity:
+        return None
+
+    entry_price = _safe_float(trade.get('entry_price') or trade.get('price'))
+    if entry_price is None:
+        return None
+
+    exit_price = _safe_float(trade.get('exit_price'))
+    trade_date = _parse_datetime(trade.get('trade_date') or trade.get('date') or trade.get('created_at'))
+    updated_at = _parse_datetime(trade.get('updated_at'))
+
+    direction = (trade.get('direction') or 'long').strip().lower()
+    if direction not in ('long', 'short'):
+        direction = 'long'
+
+    return {
+        'id': str(trade.get('_id') or trade.get('id') or ''),
+        'symbol': symbol,
+        'quantity': quantity,
+        'entry_price': entry_price,
+        'exit_price': exit_price,
+        'direction': direction,
+        'trade_date': trade_date,
+        'updated_at': updated_at,
+        'notes': trade.get('notes'),
+        'strategy': trade.get('strategy'),
+    }
+
+
+def _evaluate_trade(trade, price_lookup):
+    """Calculate current price, pnl and returns for a normalized trade record"""
+    if not trade:
+        return None
+
+    direction_multiplier = -1 if trade['direction'] == 'short' else 1
+    entry_value = trade['entry_price'] * trade['quantity']
+
+    if trade['exit_price'] is not None:
+        current_price = trade['exit_price']
+        is_closed = True
+    else:
+        current_price = price_lookup.get(trade['symbol'], {}).get('current', trade['entry_price'])
+        is_closed = False
+
+    pnl = (current_price - trade['entry_price']) * trade['quantity'] * direction_multiplier
+    return_pct = (pnl / entry_value * 100) if entry_value else 0
+    current_value = current_price * trade['quantity']
+
+    holding_days = None
+    if trade['trade_date']:
+        end_date = trade['updated_at'] if (trade['updated_at'] and is_closed) else datetime.utcnow()
+        holding_days = max((end_date - trade['trade_date']).days, 0)
+
+    return {
+        **trade,
+        'current_price': current_price,
+        'current_value': current_value,
+        'pnl': pnl,
+        'return_pct': return_pct,
+        'is_closed': is_closed,
+        'holding_days': holding_days,
+        'cost_basis': entry_value,
+    }
+
+
+def _calculate_equity_curve(closed_trades, unrealized_pnl):
+    if not closed_trades and not unrealized_pnl:
+        return []
+
+    sorted_trades = sorted(
+        closed_trades,
+        key=lambda t: t['updated_at'] or t['trade_date'] or datetime.utcnow()
+    )
+
+    curve = []
+    running = 0.0
+    for trade in sorted_trades:
+        running += trade['pnl']
+        point_date = trade['updated_at'] or trade['trade_date'] or datetime.utcnow()
+        curve.append({
+            'date': point_date.strftime('%Y-%m-%d'),
+            'value': round(running, 2)
+        })
+
+    if unrealized_pnl:
+        curve.append({
+            'date': 'Now',
+            'value': round(running + unrealized_pnl, 2)
+        })
+
+    return curve
+
+
+def _calculate_risk_metrics(equity_curve):
+    if len(equity_curve) < 2:
+        return {'max_drawdown': 0.0, 'volatility': 0.0, 'sharpe_ratio': 0.0}
+
+    values = [point['value'] for point in equity_curve]
+    max_value = values[0]
+    max_drawdown = 0.0
+
+    for value in values:
+        if value > max_value:
+            max_value = value
+        drawdown = (value - max_value) / max_value if max_value else 0
+        if drawdown < max_drawdown:
+            max_drawdown = drawdown
+
+    returns = []
+    for i in range(1, len(values)):
+        prev = values[i - 1]
+        curr = values[i]
+        if prev != 0:
+            returns.append((curr - prev) / abs(prev))
+
+    if returns:
+        avg_return = sum(returns) / len(returns)
+        variance = sum((r - avg_return) ** 2 for r in returns) / len(returns)
+        volatility = math.sqrt(max(variance, 0))
+        sharpe = (avg_return / volatility) if volatility else avg_return
+    else:
+        volatility = 0.0
+        sharpe = 0.0
+
+    return {
+        'max_drawdown': round(abs(max_drawdown) * 100, 2),
+        'volatility': round(volatility * 100, 2),
+        'sharpe_ratio': round(sharpe * math.sqrt(len(equity_curve)) if len(equity_curve) > 1 else sharpe, 2)
+    }
+
+
+def _build_portfolio_analytics(trades, price_lookup):
+    normalized = [_normalize_trade_record(trade) for trade in trades]
+    normalized = [trade for trade in normalized if trade]
+
+    if not normalized:
+        return {
+            'summary': {
+                'totalCapital': 0.0,
+                'realizedPnL': 0.0,
+                'unrealizedPnL': 0.0,
+                'totalPnL': 0.0,
+                'winRate': None,
+                'closedTrades': 0,
+                'openPositions': 0,
+                'avgReturn': 0.0,
+                'exposure': {'long': 0.0, 'short': 0.0},
+            },
+            'charts': {
+                'equityCurve': [],
+                'allocation': [],
+                'performanceBySymbol': [],
+            },
+            'insights': {
+                'bestTrade': None,
+                'worstTrade': None,
+                'risk': {'max_drawdown': 0.0, 'volatility': 0.0, 'sharpe_ratio': 0.0},
+            },
+            'recentTrades': [],
+            'openPositions': [],
+        }
+
+    closed_trades = []
+    open_trades = []
+    performance_by_symbol = defaultdict(lambda: {'pnl': 0.0, 'trades': 0})
+    total_cost = 0.0
+    long_exposure = 0.0
+    short_exposure = 0.0
+    wins = 0
+    losses = 0
+
+    for trade in normalized:
+        metrics = _evaluate_trade(trade, price_lookup)
+        if not metrics:
+            continue
+
+        total_cost += metrics['cost_basis']
+        performance_by_symbol[metrics['symbol']]['pnl'] += metrics['pnl']
+        performance_by_symbol[metrics['symbol']]['trades'] += 1
+
+        exposure_value = abs(metrics['current_price'] * metrics['quantity'])
+        if metrics['direction'] == 'short':
+            short_exposure += exposure_value
+        else:
+            long_exposure += exposure_value
+
+        if metrics['is_closed']:
+            closed_trades.append(metrics)
+            if metrics['pnl'] > 0:
+                wins += 1
+            elif metrics['pnl'] < 0:
+                losses += 1
+        else:
+            open_trades.append(metrics)
+
+    realized_pnl = sum(t['pnl'] for t in closed_trades)
+    unrealized_pnl = sum(t['pnl'] for t in open_trades)
+    equity_curve = _calculate_equity_curve(closed_trades, unrealized_pnl)
+    risk_metrics = _calculate_risk_metrics(equity_curve)
+
+    allocation_total = sum(abs(t['current_price'] * t['quantity']) for t in open_trades)
+    allocation = []
+    if allocation_total:
+        for trade in sorted(open_trades, key=lambda t: abs(t['current_price'] * t['quantity']), reverse=True):
+            value = abs(trade['current_price'] * trade['quantity'])
+            allocation.append({
+                'symbol': trade['symbol'],
+                'value': round(value, 2),
+                'percent': round((value / allocation_total) * 100, 2)
+            })
+
+    performance_chart = [
+        {
+            'symbol': symbol,
+            'pnl': round(data['pnl'], 2),
+            'trades': data['trades']
+        }
+        for symbol, data in sorted(
+            performance_by_symbol.items(),
+            key=lambda item: abs(item[1]['pnl']),
+            reverse=True
+        )
+    ][:8]
+
+    all_trades = closed_trades + open_trades
+    best_trade = max(all_trades, key=lambda t: t['pnl'], default=None)
+    worst_trade = min(all_trades, key=lambda t: t['pnl'], default=None)
+
+    def _serialize_trade(trade_snapshot):
+        if not trade_snapshot:
+            return None
+        return {
+            'symbol': trade_snapshot['symbol'],
+            'pnl': round(trade_snapshot['pnl'], 2),
+            'return_pct': round(trade_snapshot['return_pct'], 2),
+            'quantity': trade_snapshot['quantity'],
+            'direction': trade_snapshot['direction'],
+            'entry_price': trade_snapshot['entry_price'],
+            'exit_price': trade_snapshot.get('exit_price'),
+            'current_price': trade_snapshot['current_price'],
+            'is_closed': trade_snapshot['is_closed'],
+            'holding_days': trade_snapshot['holding_days'],
+            'trade_date': trade_snapshot['trade_date'].isoformat() if trade_snapshot['trade_date'] else None,
+            'updated_at': trade_snapshot['updated_at'].isoformat() if trade_snapshot['updated_at'] else None,
+        }
+
+    recent_trades = sorted(
+        normalized,
+        key=lambda t: t['trade_date'] or t['updated_at'] or datetime.utcnow(),
+        reverse=True
+    )[:6]
+
+    recent_trades_payload = []
+    for trade in recent_trades:
+        metrics = _evaluate_trade(trade, price_lookup)
+        if not metrics:
+            continue
+        recent_trades_payload.append({
+            'symbol': metrics['symbol'],
+            'direction': metrics['direction'],
+            'trade_date': metrics['trade_date'].isoformat() if metrics['trade_date'] else None,
+            'is_closed': metrics['is_closed'],
+            'pnl': round(metrics['pnl'], 2),
+            'return_pct': round(metrics['return_pct'], 2),
+            'quantity': metrics['quantity'],
+            'entry_price': metrics['entry_price'],
+            'exit_price': metrics.get('exit_price'),
+            'current_price': metrics['current_price'],
+        })
+
+    open_positions_payload = [
+        {
+            'symbol': trade['symbol'],
+            'direction': trade['direction'],
+            'quantity': trade['quantity'],
+            'entry_price': trade['entry_price'],
+            'current_price': trade['current_price'],
+            'current_value': round(trade['current_value'], 2),
+            'pnl': round(trade['pnl'], 2),
+            'return_pct': round(trade['return_pct'], 2),
+            'notes': trade['notes'],
+        }
+        for trade in open_trades
+    ]
+
+    summary = {
+        'totalCapital': round(total_cost, 2),
+        'realizedPnL': round(realized_pnl, 2),
+        'unrealizedPnL': round(unrealized_pnl, 2),
+        'totalPnL': round(realized_pnl + unrealized_pnl, 2),
+        'winRate': round((wins / len(closed_trades)) * 100, 2) if closed_trades else None,
+        'closedTrades': len(closed_trades),
+        'openPositions': len(open_trades),
+        'avgReturn': round(
+            sum(t['return_pct'] for t in closed_trades) / len(closed_trades), 2
+        ) if closed_trades else 0.0,
+        'exposure': {
+            'long': round(long_exposure, 2),
+            'short': round(short_exposure, 2),
+        }
+    }
+
+    return {
+        'summary': summary,
+        'charts': {
+            'equityCurve': equity_curve,
+            'allocation': allocation,
+            'performanceBySymbol': performance_chart,
+        },
+        'insights': {
+            'bestTrade': _serialize_trade(best_trade),
+            'worstTrade': _serialize_trade(worst_trade),
+            'risk': risk_metrics,
+            'winLoss': {
+                'wins': wins,
+                'losses': losses,
+            }
+        },
+        'recentTrades': recent_trades_payload,
+        'openPositions': open_positions_payload,
+    }
+
+
+@app.route('/api/analytics/portfolio', methods=['GET'])
+@login_required
+def get_portfolio_analytics():
+    """Compute advanced portfolio analytics for the authenticated user"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+
+        user_id = user_info['user_id']
+        trades = mongodb_manager.get_user_trades(user_id) or []
+
+        open_symbols = {
+            (trade.get('symbol') or '').upper().strip()
+            for trade in trades
+            if not trade.get('exit_price') and trade.get('symbol')
+        }
+
+        price_lookup = {}
+        if open_symbols:
+            try:
+                price_lookup = fetch_symbol_quotes(list(open_symbols))
+            except Exception as e:
+                print(f"[analytics] Error fetching prices: {e}")
+                price_lookup = {}
+
+        analytics = _build_portfolio_analytics(trades, price_lookup)
+        return jsonify({'success': True, 'data': analytics})
+
+    except Exception as e:
+        print(f"Error generating portfolio analytics: {e}")
+        return jsonify({'success': False, 'error': 'Failed to compute analytics'}), 500
 
 
 # Price Alerts API Endpoints
