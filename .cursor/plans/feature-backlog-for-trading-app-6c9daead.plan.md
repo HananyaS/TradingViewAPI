@@ -3,7 +3,7 @@
 
 ## Analytics & Insights
 
-### 1. Advanced Portfolio Analytics Dashboard
+### ~~1. Advanced Portfolio Analytics Dashboard~~
 
 - **Description**: Comprehensive dashboard showing portfolio performance metrics, risk analysis, and visualizations
 - **Features**:
@@ -15,7 +15,7 @@
 - Sector exposure analysis
 - **Value**: Helps users understand portfolio performance and risk exposure
 
-### 2. Trade Performance Analytics
+### 2. Trade Performance Analytics -- REMOVE
 
 - **Description**: Deep dive into trading performance with advanced metrics
 - **Features**:
@@ -40,7 +40,7 @@
 
 ## Automation & Alerts
 
-### 4. Price Alerts System
+### ~~4. Price Alerts System~~
 
 - **Description**: Set alerts for price movements, technical indicators, or custom conditions
 - **Features**:

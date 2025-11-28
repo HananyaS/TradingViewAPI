@@ -7,7 +7,8 @@ import {
   ChartBarIcon,
   NewspaperIcon,
   BellIcon,
-  XMarkIcon
+  XMarkIcon,
+  ShieldExclamationIcon
 } from '@heroicons/react/24/outline';
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -20,6 +21,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     { name: 'Alerts', href: '/alerts', icon: BellIcon },
     { name: 'News', href: '/news', icon: NewspaperIcon },
     { name: 'Analysis', href: '/analysis', icon: ChartBarIcon },
+    { name: 'Risk Dashboard', href: '/risk', icon: ShieldExclamationIcon },
   ];
 
   const isActive = (href) => {

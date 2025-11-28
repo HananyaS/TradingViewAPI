@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const COLORS = [
   '#2563eb',
@@ -12,6 +12,9 @@ const COLORS = [
 ];
 
 const DonutChart = ({ data = [], size = 220, strokeWidth = 18 }) => {
+  const [hoveredIndex, setHoveredIndex] = useState(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+
   const validData = data.filter((item) => item && item.value > 0);
   const total = validData.reduce((sum, item) => sum + item.value, 0);
 
@@ -27,9 +30,31 @@ const DonutChart = ({ data = [], size = 220, strokeWidth = 18 }) => {
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
 
+  const handleMouseEnter = (index, event) => {
+    setHoveredIndex(index);
+    const rect = event.currentTarget.getBoundingClientRect();
+    setTooltipPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    });
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredIndex(null);
+  };
+
+  const getTooltipContent = (index) => {
+    const slice = validData[index];
+    return {
+      symbol: slice.symbol || '',
+      value: slice.value || 0,
+      percent: slice.percent || 0
+    };
+  };
+
   return (
-    <div className="flex flex-col xl:flex-row gap-6 items-center xl:items-start w-full">
-      <div className="shrink-0">
+    <div className="flex flex-col xl:flex-row gap-6 items-center xl:items-start w-full relative">
+      <div className="shrink-0 relative">
         <svg width={size} height={size} role="img" aria-label="Asset allocation">
         <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
           <circle
@@ -42,6 +67,7 @@ const DonutChart = ({ data = [], size = 220, strokeWidth = 18 }) => {
           />
           {validData.map((slice, index) => {
             const value = (slice.value / total) * circumference;
+            const isHovered = hoveredIndex === index;
             const circle = (
               <circle
                 key={slice.symbol}
@@ -50,10 +76,14 @@ const DonutChart = ({ data = [], size = 220, strokeWidth = 18 }) => {
                 r={radius}
                 fill="none"
                 stroke={COLORS[index % COLORS.length]}
-                strokeWidth={strokeWidth}
+                strokeWidth={isHovered ? strokeWidth + 2 : strokeWidth}
                 strokeDasharray={`${value} ${circumference}`}
                 strokeDashoffset={-offset}
                 strokeLinecap="round"
+                opacity={isHovered ? 1 : hoveredIndex !== null ? 0.5 : 1}
+                onMouseEnter={(e) => handleMouseEnter(index, e)}
+                onMouseLeave={handleMouseLeave}
+                style={{ cursor: 'pointer', transition: 'all 0.2s' }}
               />
             );
             offset += value;
@@ -71,9 +101,34 @@ const DonutChart = ({ data = [], size = 220, strokeWidth = 18 }) => {
         </text>
         </svg>
       </div>
+      {hoveredIndex !== null && (
+        <div
+          className="absolute z-50 bg-gray-900 dark:bg-gray-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg pointer-events-none"
+          style={{
+            left: `${tooltipPosition.x}px`,
+            top: `${tooltipPosition.y}px`,
+            transform: 'translate(-50%, -50%)',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <div className="font-semibold">{getTooltipContent(hoveredIndex).symbol}</div>
+          <div className="text-gray-300 mt-0.5">
+            Value: ${getTooltipContent(hoveredIndex).value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div className="text-gray-300 mt-0.5">
+            {getTooltipContent(hoveredIndex).percent.toFixed(1)}%
+          </div>
+        </div>
+      )}
       <div className="flex-1 w-full space-y-3">
         {validData.map((slice, index) => (
-          <div key={slice.symbol} className="flex items-center justify-between text-sm">
+          <div 
+            key={slice.symbol} 
+            className="flex items-center justify-between text-sm"
+            onMouseEnter={() => setHoveredIndex(index)}
+            onMouseLeave={() => setHoveredIndex(null)}
+            style={{ cursor: 'pointer' }}
+          >
             <div className="flex items-center gap-2">
               <span
                 className="h-3 w-3 rounded-full"

@@ -1336,6 +1336,585 @@ def get_portfolio_analytics():
         return jsonify({'success': False, 'error': 'Failed to compute analytics'}), 500
 
 
+def _build_trade_performance_analytics(trades, price_lookup):
+    """Build comprehensive trade performance analytics"""
+    from datetime import timedelta
+    
+    normalized = [_normalize_trade_record(trade) for trade in trades]
+    normalized = [trade for trade in normalized if trade]
+    
+    if not normalized:
+        return {
+            'winRate': {
+                'byStrategy': [],
+                'bySymbol': [],
+                'byTimeOfDay': [],
+                'byDayOfWeek': []
+            },
+            'holdTime': {
+                'average': None,
+                'distribution': []
+            },
+            'profitFactor': None,
+            'expectancy': None,
+            'bestWorstSymbols': {
+                'best': [],
+                'worst': []
+            },
+            'marketConditions': {
+                'bull': {'count': 0, 'winRate': None, 'avgReturn': None},
+                'bear': {'count': 0, 'winRate': None, 'avgReturn': None},
+                'sideways': {'count': 0, 'winRate': None, 'avgReturn': None}
+            },
+            'pnlDistribution': []
+        }
+    
+    closed_trades = []
+    for trade in normalized:
+        metrics = _evaluate_trade(trade, price_lookup)
+        if not metrics or not metrics.get('is_closed'):
+            continue
+        closed_trades.append(metrics)
+    
+    if not closed_trades:
+        return {
+            'winRate': {
+                'byStrategy': [],
+                'bySymbol': [],
+                'byTimeOfDay': [],
+                'byDayOfWeek': []
+            },
+            'holdTime': {
+                'average': None,
+                'distribution': []
+            },
+            'profitFactor': None,
+            'expectancy': None,
+            'bestWorstSymbols': {
+                'best': [],
+                'worst': []
+            },
+            'marketConditions': {
+                'bull': {'count': 0, 'winRate': None, 'avgReturn': None},
+                'bear': {'count': 0, 'winRate': None, 'avgReturn': None},
+                'sideways': {'count': 0, 'winRate': None, 'avgReturn': None}
+            },
+            'pnlDistribution': []
+        }
+    
+    # Win rate by strategy
+    strategy_stats = defaultdict(lambda: {'wins': 0, 'total': 0, 'pnl': 0.0})
+    for trade in closed_trades:
+        strategy = trade.get('strategy') or 'Unnamed'
+        strategy_stats[strategy]['total'] += 1
+        if trade['pnl'] > 0:
+            strategy_stats[strategy]['wins'] += 1
+        strategy_stats[strategy]['pnl'] += trade['pnl']
+    
+    win_rate_by_strategy = [
+        {
+            'strategy': strat,
+            'winRate': round((data['wins'] / data['total']) * 100, 1) if data['total'] > 0 else 0,
+            'totalTrades': data['total'],
+            'totalPnL': round(data['pnl'], 2)
+        }
+        for strat, data in sorted(strategy_stats.items(), key=lambda x: x[1]['total'], reverse=True)
+    ]
+    
+    # Win rate by symbol
+    symbol_stats = defaultdict(lambda: {'wins': 0, 'total': 0, 'pnl': 0.0})
+    for trade in closed_trades:
+        symbol = trade['symbol']
+        symbol_stats[symbol]['total'] += 1
+        if trade['pnl'] > 0:
+            symbol_stats[symbol]['wins'] += 1
+        symbol_stats[symbol]['pnl'] += trade['pnl']
+    
+    win_rate_by_symbol = [
+        {
+            'symbol': sym,
+            'winRate': round((data['wins'] / data['total']) * 100, 1) if data['total'] > 0 else 0,
+            'totalTrades': data['total'],
+            'totalPnL': round(data['pnl'], 2)
+        }
+        for sym, data in sorted(symbol_stats.items(), key=lambda x: x[1]['total'], reverse=True)
+    ]
+    
+    # Win rate by time of day
+    time_of_day_stats = defaultdict(lambda: {'wins': 0, 'total': 0})
+    for trade in closed_trades:
+        if trade.get('trade_date'):
+            hour = trade['trade_date'].hour
+            time_bucket = f"{hour:02d}:00"
+            time_of_day_stats[time_bucket]['total'] += 1
+            if trade['pnl'] > 0:
+                time_of_day_stats[time_bucket]['wins'] += 1
+    
+    win_rate_by_time = [
+        {
+            'time': time_bucket,
+            'winRate': round((data['wins'] / data['total']) * 100, 1) if data['total'] > 0 else 0,
+            'totalTrades': data['total']
+        }
+        for time_bucket, data in sorted(time_of_day_stats.items())
+    ]
+    
+    # Win rate by day of week
+    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    day_of_week_stats = defaultdict(lambda: {'wins': 0, 'total': 0})
+    for trade in closed_trades:
+        if trade.get('trade_date'):
+            day_idx = trade['trade_date'].weekday()
+            day_name = day_names[day_idx]
+            day_of_week_stats[day_name]['total'] += 1
+            if trade['pnl'] > 0:
+                day_of_week_stats[day_name]['wins'] += 1
+    
+    win_rate_by_day = [
+        {
+            'day': day_name,
+            'winRate': round((day_of_week_stats[day_name]['wins'] / day_of_week_stats[day_name]['total']) * 100, 1) if day_of_week_stats[day_name]['total'] > 0 else 0,
+            'totalTrades': day_of_week_stats[day_name]['total']
+        }
+        for day_name in day_names
+        if day_of_week_stats[day_name]['total'] > 0
+    ]
+    
+    # Average hold time
+    hold_times = [t['holding_days'] for t in closed_trades if t.get('holding_days') is not None]
+    avg_hold_time = round(sum(hold_times) / len(hold_times), 1) if hold_times else None
+    
+    # Hold time distribution (buckets: 0-1, 2-5, 6-10, 11-30, 31+ days)
+    hold_time_buckets = {
+        '0-1 days': 0,
+        '2-5 days': 0,
+        '6-10 days': 0,
+        '11-30 days': 0,
+        '31+ days': 0
+    }
+    for days in hold_times:
+        if days <= 1:
+            hold_time_buckets['0-1 days'] += 1
+        elif days <= 5:
+            hold_time_buckets['2-5 days'] += 1
+        elif days <= 10:
+            hold_time_buckets['6-10 days'] += 1
+        elif days <= 30:
+            hold_time_buckets['11-30 days'] += 1
+        else:
+            hold_time_buckets['31+ days'] += 1
+    
+    hold_time_distribution = [
+        {'bucket': bucket, 'count': count}
+        for bucket, count in hold_time_buckets.items()
+    ]
+    
+    # Profit factor and expectancy
+    gross_profit = sum(t['pnl'] for t in closed_trades if t['pnl'] > 0)
+    gross_loss = abs(sum(t['pnl'] for t in closed_trades if t['pnl'] < 0))
+    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else None
+    
+    winning_trades = [t for t in closed_trades if t['pnl'] > 0]
+    losing_trades = [t for t in closed_trades if t['pnl'] < 0]
+    
+    avg_win = sum(t['pnl'] for t in winning_trades) / len(winning_trades) if winning_trades else 0
+    avg_loss = sum(t['pnl'] for t in losing_trades) / len(losing_trades) if losing_trades else 0
+    win_rate = len(winning_trades) / len(closed_trades) if closed_trades else 0
+    loss_rate = 1 - win_rate
+    
+    expectancy = round((win_rate * avg_win) - (loss_rate * abs(avg_loss)), 2) if closed_trades else None
+    
+    # Best/worst performing symbols
+    symbol_performance = [
+        {
+            'symbol': sym,
+            'totalPnL': round(data['pnl'], 2),
+            'totalTrades': data['total'],
+            'avgReturn': round(data['pnl'] / data['total'], 2) if data['total'] > 0 else 0
+        }
+        for sym, data in symbol_stats.items()
+    ]
+    
+    best_symbols = sorted(symbol_performance, key=lambda x: x['totalPnL'], reverse=True)[:5]
+    worst_symbols = sorted(symbol_performance, key=lambda x: x['totalPnL'])[:5]
+    
+    # Performance by market conditions (simplified: based on trade return)
+    market_condition_stats = {
+        'bull': {'trades': [], 'wins': 0, 'total': 0},
+        'bear': {'trades': [], 'wins': 0, 'total': 0},
+        'sideways': {'trades': [], 'wins': 0, 'total': 0}
+    }
+    
+    for trade in closed_trades:
+        return_pct = trade.get('return_pct', 0)
+        if return_pct > 5:  # Strong positive return suggests bull market
+            condition = 'bull'
+        elif return_pct < -5:  # Strong negative return suggests bear market
+            condition = 'bear'
+        else:
+            condition = 'sideways'
+        
+        market_condition_stats[condition]['trades'].append(trade)
+        market_condition_stats[condition]['total'] += 1
+        if trade['pnl'] > 0:
+            market_condition_stats[condition]['wins'] += 1
+    
+    market_conditions = {}
+    for condition, stats in market_condition_stats.items():
+        if stats['total'] > 0:
+            market_conditions[condition] = {
+                'count': stats['total'],
+                'winRate': round((stats['wins'] / stats['total']) * 100, 1),
+                'avgReturn': round(sum(t['return_pct'] for t in stats['trades']) / stats['total'], 2)
+            }
+        else:
+            market_conditions[condition] = {
+                'count': 0,
+                'winRate': None,
+                'avgReturn': None
+            }
+    
+    # P&L distribution (histogram buckets)
+    pnl_values = [t['pnl'] for t in closed_trades]
+    if pnl_values:
+        min_pnl = min(pnl_values)
+        max_pnl = max(pnl_values)
+        range_pnl = max_pnl - min_pnl
+        
+        if range_pnl > 0:
+            num_buckets = 10
+            bucket_size = range_pnl / num_buckets
+            buckets = defaultdict(int)
+            
+            for pnl in pnl_values:
+                bucket_idx = min(int((pnl - min_pnl) / bucket_size), num_buckets - 1)
+                bucket_start = min_pnl + (bucket_idx * bucket_size)
+                bucket_end = bucket_start + bucket_size
+                bucket_label = f"${bucket_start:.0f} to ${bucket_end:.0f}"
+                buckets[bucket_label] += 1
+            
+            pnl_distribution = [
+                {'range': label, 'count': count}
+                for label, count in sorted(buckets.items(), key=lambda x: float(x[0].split(' to ')[0].replace('$', '')))
+            ]
+        else:
+            pnl_distribution = [{'range': f"${min_pnl:.0f}", 'count': len(pnl_values)}]
+    else:
+        pnl_distribution = []
+    
+    return {
+        'winRate': {
+            'byStrategy': win_rate_by_strategy,
+            'bySymbol': win_rate_by_symbol,
+            'byTimeOfDay': win_rate_by_time,
+            'byDayOfWeek': win_rate_by_day
+        },
+        'holdTime': {
+            'average': avg_hold_time,
+            'distribution': hold_time_distribution
+        },
+        'profitFactor': profit_factor,
+        'expectancy': expectancy,
+        'bestWorstSymbols': {
+            'best': best_symbols,
+            'worst': worst_symbols
+        },
+        'marketConditions': market_conditions,
+        'pnlDistribution': pnl_distribution
+    }
+
+
+def _build_risk_analytics(trades, price_lookup):
+    """Build comprehensive risk analytics"""
+    from collections import defaultdict
+    
+    normalized = [_normalize_trade_record(trade) for trade in trades]
+    normalized = [trade for trade in normalized if trade]
+    
+    if not normalized:
+        return {
+            'riskMetrics': {
+                'var_95': 0.0,
+                'cvar_95': 0.0,
+                'maxDrawdown': 0.0,
+                'volatility': 0.0,
+                'sharpeRatio': 0.0,
+                'sortinoRatio': 0.0,
+                'beta': 0.0,
+            },
+            'concentration': {
+                'topStockExposure': 0.0,
+                'top5StockExposure': 0.0,
+                'topStockSymbol': None,
+                'stockBreakdown': [],
+            },
+            'correlation': {
+                'avgCorrelation': 0.0,
+                'highCorrelationPairs': [],
+            },
+            'leverage': {
+                'totalExposure': 0.0,
+                'netExposure': 0.0,
+                'grossExposure': 0.0,
+                'leverageRatio': 0.0,
+                'longExposure': 0.0,
+                'shortExposure': 0.0,
+            },
+            'alerts': [],
+        }
+    
+    # Evaluate all trades
+    evaluated_trades = []
+    for trade in normalized:
+        metrics = _evaluate_trade(trade, price_lookup)
+        if metrics:
+            evaluated_trades.append(metrics)
+    
+    closed_trades = [t for t in evaluated_trades if t['is_closed']]
+    open_trades = [t for t in evaluated_trades if not t['is_closed']]
+    
+    # Calculate equity curve for risk metrics
+    equity_curve = _calculate_equity_curve(closed_trades, sum(t['pnl'] for t in open_trades))
+    risk_metrics_basic = _calculate_risk_metrics(equity_curve)
+    
+    # Calculate returns for VaR/CVaR
+    returns = []
+    if len(equity_curve) > 1:
+        values = [point['value'] for point in equity_curve]
+        for i in range(1, len(values)):
+            prev = values[i - 1]
+            curr = values[i]
+            if prev != 0:
+                returns.append((curr - prev) / abs(prev))
+    
+    # Calculate VaR and CVaR (95% confidence)
+    var_95 = 0.0
+    cvar_95 = 0.0
+    try:
+        import numpy as np
+        if returns:
+            returns_array = np.array(returns)
+            var_95 = np.percentile(returns_array, 5)  # 5th percentile (95% VaR)
+            cvar_95 = returns_array[returns_array <= var_95].mean() if len(returns_array[returns_array <= var_95]) > 0 else var_95
+    except ImportError:
+        # Fallback if numpy not available
+        if returns:
+            sorted_returns = sorted(returns)
+            var_95 = sorted_returns[int(len(sorted_returns) * 0.05)] if len(sorted_returns) > 0 else 0
+            cvar_95 = sum(r for r in returns if r <= var_95) / len([r for r in returns if r <= var_95]) if any(r <= var_95 for r in returns) else var_95
+    
+    # Calculate Sharpe and Sortino ratios
+    sharpe_ratio = risk_metrics_basic.get('sharpe_ratio', 0.0)
+    volatility = risk_metrics_basic.get('volatility', 0.0)
+    
+    # Sortino ratio (downside deviation only)
+    sortino_ratio = 0.0
+    try:
+        import numpy as np
+        if returns:
+            downside_returns = [r for r in returns if r < 0]
+            if downside_returns and len(downside_returns) > 0:
+                downside_std = np.std(downside_returns)
+                avg_return = np.mean(returns)
+                if downside_std > 0:
+                    sortino_ratio = (avg_return / downside_std) * math.sqrt(252)  # Annualized
+    except ImportError:
+        # Fallback if numpy not available
+        if returns:
+            downside_returns = [r for r in returns if r < 0]
+            if downside_returns and len(downside_returns) > 0:
+                avg_downside = sum(downside_returns) / len(downside_returns)
+                variance = sum((r - avg_downside) ** 2 for r in downside_returns) / len(downside_returns)
+                downside_std = math.sqrt(variance)
+                avg_return = sum(returns) / len(returns)
+                if downside_std > 0:
+                    sortino_ratio = (avg_return / downside_std) * math.sqrt(252)
+    
+    # Concentration risk
+    total_portfolio_value = sum(abs(t['current_price'] * t['quantity']) for t in open_trades)
+    stock_values = defaultdict(float)
+    for trade in open_trades:
+        stock_values[trade['symbol']] += abs(trade['current_price'] * trade['quantity'])
+    
+    stock_breakdown = sorted(
+        [{'symbol': symbol, 'value': value, 'percent': (value / total_portfolio_value * 100) if total_portfolio_value > 0 else 0}
+         for symbol, value in stock_values.items()],
+        key=lambda x: x['value'],
+        reverse=True
+    )
+    
+    top_stock_exposure = stock_breakdown[0]['percent'] if stock_breakdown else 0.0
+    top_5_exposure = sum(s['percent'] for s in stock_breakdown[:5])
+    top_stock_symbol = stock_breakdown[0]['symbol'] if stock_breakdown else None
+    
+    # Leverage monitoring
+    long_exposure = sum(abs(t['current_price'] * t['quantity']) for t in open_trades if t['direction'] == 'long')
+    short_exposure = sum(abs(t['current_price'] * t['quantity']) for t in open_trades if t['direction'] == 'short')
+    gross_exposure = long_exposure + short_exposure
+    net_exposure = long_exposure - short_exposure
+    
+    # Calculate portfolio value (cost basis + unrealized P&L)
+    cost_basis = sum(t['cost_basis'] for t in open_trades)
+    unrealized_pnl = sum(t['pnl'] for t in open_trades)
+    portfolio_value = cost_basis + unrealized_pnl
+    
+    leverage_ratio = (gross_exposure / portfolio_value) if portfolio_value > 0 else 0.0
+    
+    # Correlation risk (simplified - using price movements)
+    # For a more accurate correlation, we'd need historical price data
+    correlation_pairs = []
+    if len(open_trades) > 1:
+        symbols = list(stock_values.keys())
+        for i in range(len(symbols)):
+            for j in range(i + 1, len(symbols)):
+                # Simplified correlation - assume moderate correlation for now
+                # In production, calculate from historical returns
+                correlation_pairs.append({
+                    'symbol1': symbols[i],
+                    'symbol2': symbols[j],
+                    'correlation': 0.5  # Placeholder - would need historical data
+                })
+    
+    avg_correlation = 0.5  # Placeholder
+    high_correlation_pairs = [p for p in correlation_pairs if p['correlation'] > 0.7]
+    
+    # Risk alerts
+    alerts = []
+    if top_stock_exposure > 25:
+        alerts.append({
+            'type': 'concentration',
+            'severity': 'high' if top_stock_exposure > 40 else 'medium',
+            'message': f'High concentration: {top_stock_symbol} represents {top_stock_exposure:.1f}% of portfolio'
+        })
+    if leverage_ratio > 2.0:
+        alerts.append({
+            'type': 'leverage',
+            'severity': 'high',
+            'message': f'High leverage: {leverage_ratio:.2f}x leverage detected'
+        })
+    if risk_metrics_basic.get('max_drawdown', 0) < -0.20:
+        alerts.append({
+            'type': 'drawdown',
+            'severity': 'high',
+            'message': f'Significant drawdown: {abs(risk_metrics_basic.get("max_drawdown", 0) * 100):.1f}%'
+        })
+    if volatility > 0.30:
+        alerts.append({
+            'type': 'volatility',
+            'severity': 'medium',
+            'message': f'High volatility: {volatility * 100:.1f}%'
+        })
+    if sharpe_ratio < 0:
+        alerts.append({
+            'type': 'performance',
+            'severity': 'medium',
+            'message': 'Negative risk-adjusted returns (Sharpe ratio < 0)'
+        })
+    
+    return {
+        'riskMetrics': {
+            'var_95': round(var_95 * 100, 2) if var_95 else 0.0,  # As percentage
+            'cvar_95': round(cvar_95 * 100, 2) if cvar_95 else 0.0,  # As percentage
+            'maxDrawdown': round(abs(risk_metrics_basic.get('max_drawdown', 0)), 2),
+            'volatility': round(volatility * 100, 2),
+            'sharpeRatio': round(sharpe_ratio, 2),
+            'sortinoRatio': round(sortino_ratio, 2),
+            'beta': 1.0,  # Placeholder - would need market data
+        },
+        'concentration': {
+            'topStockExposure': round(top_stock_exposure, 2),
+            'top5StockExposure': round(top_5_exposure, 2),
+            'topStockSymbol': top_stock_symbol,
+            'stockBreakdown': stock_breakdown[:10],  # Top 10
+        },
+        'correlation': {
+            'avgCorrelation': round(avg_correlation, 2),
+            'highCorrelationPairs': high_correlation_pairs[:5],  # Top 5
+        },
+        'leverage': {
+            'totalExposure': round(gross_exposure, 2),
+            'netExposure': round(net_exposure, 2),
+            'grossExposure': round(gross_exposure, 2),
+            'leverageRatio': round(leverage_ratio, 2),
+            'longExposure': round(long_exposure, 2),
+            'shortExposure': round(short_exposure, 2),
+        },
+        'alerts': alerts,
+    }
+
+
+@app.route('/api/analytics/risk', methods=['GET'])
+@login_required
+def get_risk_analytics():
+    """Compute comprehensive risk analytics for the authenticated user"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+
+        user_id = user_info['user_id']
+        trades = mongodb_manager.get_user_trades(user_id) or []
+
+        open_symbols = {
+            (trade.get('symbol') or '').upper().strip()
+            for trade in trades
+            if not trade.get('exit_price') and trade.get('symbol')
+        }
+
+        price_lookup = {}
+        if open_symbols:
+            try:
+                price_lookup = fetch_symbol_quotes(list(open_symbols))
+            except Exception as e:
+                print(f"[risk-analytics] Error fetching prices: {e}")
+                price_lookup = {}
+
+        analytics = _build_risk_analytics(trades, price_lookup)
+        return jsonify({'success': True, 'data': analytics})
+
+    except Exception as e:
+        print(f"Error generating risk analytics: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Failed to compute risk analytics'}), 500
+
+
+@app.route('/api/analytics/trade-performance', methods=['GET'])
+@login_required
+def get_trade_performance_analytics():
+    """Compute trade performance analytics for the authenticated user"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+
+        user_id = user_info['user_id']
+        trades = mongodb_manager.get_user_trades(user_id) or []
+
+        open_symbols = {
+            (trade.get('symbol') or '').upper().strip()
+            for trade in trades
+            if not trade.get('exit_price') and trade.get('symbol')
+        }
+
+        price_lookup = {}
+        if open_symbols:
+            try:
+                price_lookup = fetch_symbol_quotes(list(open_symbols))
+            except Exception as e:
+                print(f"[analytics] Error fetching prices: {e}")
+                price_lookup = {}
+
+        analytics = _build_trade_performance_analytics(trades, price_lookup)
+        return jsonify({'success': True, 'data': analytics})
+
+    except Exception as e:
+        print(f"Error generating trade performance analytics: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Failed to compute analytics'}), 500
+
+
 # Price Alerts API Endpoints
 @app.route('/api/alerts', methods=['GET'])
 @login_required
