@@ -8,7 +8,8 @@ import {
   NewspaperIcon,
   BellIcon,
   XMarkIcon,
-  ShieldExclamationIcon
+  ShieldExclamationIcon,
+  ArrowsRightLeftIcon
 } from '@heroicons/react/24/outline';
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -22,6 +23,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     { name: 'News', href: '/news', icon: NewspaperIcon },
     { name: 'Analysis', href: '/analysis', icon: ChartBarIcon },
     { name: 'Risk Dashboard', href: '/risk', icon: ShieldExclamationIcon },
+    { name: 'Rebalancing', href: '/rebalancing', icon: ArrowsRightLeftIcon },
   ];
 
   const isActive = (href) => {

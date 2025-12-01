@@ -1171,6 +1171,252 @@ class MongoDBManager:
             print(f"Error deleting user query: {e}")
             return False
 
+    def save_backtest_strategy(self, user_id, strategy_data):
+        """Save a backtesting strategy configuration"""
+        try:
+            doc = {
+                'user_id': user_id,
+                'name': strategy_data.get('name'),
+                'description': strategy_data.get('description', ''),
+                'ticker': strategy_data.get('ticker', '').upper().strip(),
+                'entry_conditions': strategy_data.get('entry_conditions', {}),
+                'exit_conditions': strategy_data.get('exit_conditions', {}),
+                'allow_multiple_positions': bool(strategy_data.get('allow_multiple_positions', False)),
+                'position_size_pct': float(strategy_data.get('position_size_pct', 10)),
+                'is_favorite': bool(strategy_data.get('is_favorite', False)),
+                'created_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow()
+            }
+
+            if self.client is None:
+                if not hasattr(self, '_fallback_backtest_strategies'):
+                    self._fallback_backtest_strategies = []
+                self._fallback_counter += 1
+                doc['_id'] = str(self._fallback_counter)
+                self._fallback_backtest_strategies.append(doc)
+                return str(doc['_id'])
+
+            collection = self.db.backtest_strategies
+            result = collection.insert_one(doc)
+            return str(result.inserted_id)
+        except Exception as e:
+            print(f"Error saving backtest strategy: {e}")
+            return None
+
+    def get_user_backtest_strategies(self, user_id):
+        """Get all backtesting strategies for a user"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_backtest_strategies'):
+                    self._fallback_backtest_strategies = []
+                strategies = [
+                    self._format_backtest_strategy_doc(s)
+                    for s in self._fallback_backtest_strategies
+                    if s.get('user_id') == user_id
+                ]
+                strategies.sort(key=lambda s: s['created_at'], reverse=True)
+                return strategies
+
+            collection = self.db.backtest_strategies
+            strategies = list(collection.find({'user_id': user_id}).sort('created_at', -1))
+            return [self._format_backtest_strategy_doc(s) for s in strategies]
+        except Exception as e:
+            print(f"Error loading backtest strategies: {e}")
+            return []
+
+    def get_backtest_strategy(self, user_id, strategy_id):
+        """Get a specific backtesting strategy"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_backtest_strategies'):
+                    self._fallback_backtest_strategies = []
+                for strategy in self._fallback_backtest_strategies:
+                    if strategy.get('_id') == strategy_id and strategy.get('user_id') == user_id:
+                        return self._format_backtest_strategy_doc(strategy)
+                return None
+
+            collection = self.db.backtest_strategies
+            try:
+                object_id = ObjectId(strategy_id)
+            except Exception:
+                return None
+            strategy = collection.find_one({'_id': object_id, 'user_id': user_id})
+            if strategy:
+                return self._format_backtest_strategy_doc(strategy)
+            return None
+        except Exception as e:
+            print(f"Error getting backtest strategy: {e}")
+            return None
+
+    def delete_backtest_strategy(self, user_id, strategy_id):
+        """Delete a backtesting strategy"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_backtest_strategies'):
+                    self._fallback_backtest_strategies = []
+                for i, strategy in enumerate(self._fallback_backtest_strategies):
+                    if strategy.get('_id') == strategy_id and strategy.get('user_id') == user_id:
+                        del self._fallback_backtest_strategies[i]
+                        return True
+                return False
+
+            collection = self.db.backtest_strategies
+            try:
+                object_id = ObjectId(strategy_id)
+            except Exception:
+                return False
+            result = collection.delete_one({'_id': object_id, 'user_id': user_id})
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting backtest strategy: {e}")
+            return False
+
+    def _format_backtest_strategy_doc(self, doc):
+        """Format a backtest strategy document for API response"""
+        formatted = {
+            'id': str(doc.get('_id', '')),
+            'name': doc.get('name', ''),
+            'description': doc.get('description', ''),
+            'ticker': doc.get('ticker', ''),
+            'entry_conditions': doc.get('entry_conditions', {}),
+            'exit_conditions': doc.get('exit_conditions', {}),
+            'allow_multiple_positions': doc.get('allow_multiple_positions', False),
+            'position_size_pct': doc.get('position_size_pct', 10),
+            'is_favorite': doc.get('is_favorite', False),
+            'created_at': doc.get('created_at'),
+            'updated_at': doc.get('updated_at')
+        }
+        if isinstance(formatted['created_at'], datetime):
+            formatted['created_at'] = formatted['created_at'].isoformat()
+        if isinstance(formatted['updated_at'], datetime):
+            formatted['updated_at'] = formatted['updated_at'].isoformat()
+        return formatted
+
+    def save_target_allocation(self, user_id, allocation_data):
+        """Save target allocation configuration"""
+        try:
+            doc = {
+                'user_id': user_id,
+                'name': allocation_data.get('name', 'Default Allocation'),
+                'allocations': allocation_data.get('allocations', []),  # [{symbol: 'AAPL', target_pct: 25.0}, ...]
+                'rebalance_threshold': float(allocation_data.get('rebalance_threshold', 5.0)),  # Rebalance when drift > 5%
+                'is_default': bool(allocation_data.get('is_default', False)),
+                'created_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow()
+            }
+
+            if self.client is None:
+                if not hasattr(self, '_fallback_target_allocations'):
+                    self._fallback_target_allocations = []
+                self._fallback_counter += 1
+                doc['_id'] = str(self._fallback_counter)
+                self._fallback_target_allocations.append(doc)
+                return str(doc['_id'])
+
+            collection = self.db.target_allocations
+            # If this is default, unset other defaults
+            if doc['is_default']:
+                collection.update_many(
+                    {'user_id': user_id, 'is_default': True},
+                    {'$set': {'is_default': False}}
+                )
+            
+            result = collection.insert_one(doc)
+            return str(result.inserted_id)
+        except Exception as e:
+            print(f"Error saving target allocation: {e}")
+            return None
+
+    def get_user_target_allocations(self, user_id):
+        """Get all target allocations for a user"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_target_allocations'):
+                    self._fallback_target_allocations = []
+                allocations = [
+                    self._format_target_allocation_doc(a)
+                    for a in self._fallback_target_allocations
+                    if a.get('user_id') == user_id
+                ]
+                allocations.sort(key=lambda a: (a['is_default'], a['created_at']), reverse=True)
+                return allocations
+
+            collection = self.db.target_allocations
+            allocations = list(collection.find({'user_id': user_id}).sort([('is_default', -1), ('created_at', -1)]))
+            return [self._format_target_allocation_doc(a) for a in allocations]
+        except Exception as e:
+            print(f"Error loading target allocations: {e}")
+            return []
+
+    def get_default_target_allocation(self, user_id):
+        """Get the default target allocation for a user"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_target_allocations'):
+                    self._fallback_target_allocations = []
+                for allocation in self._fallback_target_allocations:
+                    if allocation.get('user_id') == user_id and allocation.get('is_default', False):
+                        return self._format_target_allocation_doc(allocation)
+                # Return first one if no default
+                for allocation in self._fallback_target_allocations:
+                    if allocation.get('user_id') == user_id:
+                        return self._format_target_allocation_doc(allocation)
+                return None
+
+            collection = self.db.target_allocations
+            # Try to get default first
+            allocation = collection.find_one({'user_id': user_id, 'is_default': True})
+            if allocation:
+                return self._format_target_allocation_doc(allocation)
+            # Otherwise get the most recent
+            allocation = collection.find_one({'user_id': user_id}, sort=[('created_at', -1)])
+            if allocation:
+                return self._format_target_allocation_doc(allocation)
+            return None
+        except Exception as e:
+            print(f"Error getting default target allocation: {e}")
+            return None
+
+    def delete_target_allocation(self, user_id, allocation_id):
+        """Delete a target allocation"""
+        try:
+            if self.client is None:
+                if not hasattr(self, '_fallback_target_allocations'):
+                    self._fallback_target_allocations = []
+                for i, allocation in enumerate(self._fallback_target_allocations):
+                    if allocation.get('_id') == allocation_id and allocation.get('user_id') == user_id:
+                        del self._fallback_target_allocations[i]
+                        return True
+                return False
+
+            collection = self.db.target_allocations
+            try:
+                object_id = ObjectId(allocation_id)
+            except Exception:
+                return False
+            result = collection.delete_one({'_id': object_id, 'user_id': user_id})
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting target allocation: {e}")
+            return False
+
+    def _format_target_allocation_doc(self, doc):
+        """Format a target allocation document for API response"""
+        formatted = {
+            'id': str(doc.get('_id', '')),
+            'name': doc.get('name', ''),
+            'allocations': doc.get('allocations', []),
+            'rebalance_threshold': doc.get('rebalance_threshold', 5.0),
+            'is_default': doc.get('is_default', False),
+            'created_at': doc.get('created_at'),
+            'updated_at': doc.get('updated_at')
+        }
+        if isinstance(formatted['created_at'], datetime):
+            formatted['created_at'] = formatted['created_at'].isoformat()
+        if isinstance(formatted['updated_at'], datetime):
+            formatted['updated_at'] = formatted['updated_at'].isoformat()
+        return formatted
+
     def update_user_query(self, user_id, query_id, updates):
         """Update fields on a saved query"""
         try:

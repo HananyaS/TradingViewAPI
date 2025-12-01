@@ -46,15 +46,15 @@ const DonutChart = ({ data = [], size = 220, strokeWidth = 18 }) => {
   const getTooltipContent = (index) => {
     const slice = validData[index];
     return {
-      symbol: slice.symbol || '',
+      symbol: slice.symbol || slice.label || '',
       value: slice.value || 0,
-      percent: slice.percent || 0
+      percent: slice.percent || slice.percentage || 0
     };
   };
 
   return (
     <div className="flex flex-col xl:flex-row gap-6 items-center xl:items-start w-full relative">
-      <div className="shrink-0 relative">
+      <div className="shrink-0 relative" style={{ position: 'relative' }}>
         <svg width={size} height={size} role="img" aria-label="Asset allocation">
         <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
           <circle
@@ -103,20 +103,21 @@ const DonutChart = ({ data = [], size = 220, strokeWidth = 18 }) => {
       </div>
       {hoveredIndex !== null && (
         <div
-          className="absolute z-50 bg-gray-900 dark:bg-gray-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg pointer-events-none"
+          className="absolute z-50 bg-gray-900 dark:bg-gray-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg pointer-events-none border border-gray-700"
           style={{
             left: `${tooltipPosition.x}px`,
             top: `${tooltipPosition.y}px`,
-            transform: 'translate(-50%, -50%)',
+            transform: 'translate(-50%, -100%)',
+            marginTop: '-8px',
             whiteSpace: 'nowrap'
           }}
         >
-          <div className="font-semibold">{getTooltipContent(hoveredIndex).symbol}</div>
-          <div className="text-gray-300 mt-0.5">
+          <div className="font-semibold mb-1">{getTooltipContent(hoveredIndex).symbol}</div>
+          <div className="text-gray-300">
             Value: ${getTooltipContent(hoveredIndex).value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="text-gray-300 mt-0.5">
-            {getTooltipContent(hoveredIndex).percent.toFixed(1)}%
+          <div className="text-gray-300">
+            {getTooltipContent(hoveredIndex).percent.toFixed(2)}%
           </div>
         </div>
       )}
@@ -134,7 +135,7 @@ const DonutChart = ({ data = [], size = 220, strokeWidth = 18 }) => {
                 className="h-3 w-3 rounded-full"
                 style={{ backgroundColor: COLORS[index % COLORS.length] }}
               ></span>
-              <span className="font-medium text-gray-900 dark:text-white">{slice.symbol}</span>
+              <span className="font-medium text-gray-900 dark:text-white">{slice.symbol || slice.label}</span>
             </div>
             <div className="text-right text-gray-600 dark:text-gray-300">
               <p className="font-semibold">{slice.percent?.toFixed(1)}%</p>

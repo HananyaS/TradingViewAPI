@@ -14,6 +14,7 @@ import Profile from './pages/Profile';
 import Analysis from './pages/Analysis';
 import News from './pages/News';
 import RiskDashboard from './pages/RiskDashboard';
+import Rebalancing from './pages/Rebalancing';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -84,6 +85,7 @@ function AppRoutes() {
         <Route path="news" element={<News />} />
         <Route path="analysis" element={<Analysis />} />
         <Route path="risk" element={<RiskDashboard />} />
+        <Route path="rebalancing" element={<Rebalancing />} />
         <Route path="profile" element={<Profile />} />
         <Route path="settings" element={<Profile />} />
       </Route>

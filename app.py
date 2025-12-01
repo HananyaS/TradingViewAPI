@@ -6,7 +6,7 @@ import threading
 import time
 import urllib.parse
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 import requests
@@ -1877,6 +1877,638 @@ def get_risk_analytics():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Failed to compute risk analytics'}), 500
+
+
+
+@app.route('/api/rebalancing/current', methods=['GET'])
+@login_required
+def get_current_allocation():
+    """Get current portfolio allocation"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+
+        user_id = user_info['user_id']
+        trades = mongodb_manager.get_user_trades(user_id) or []
+
+        # Get open positions with current prices
+        open_symbols = {
+            (trade.get('symbol') or '').upper().strip()
+            for trade in trades
+            if not trade.get('exit_price') and trade.get('symbol')
+        }
+
+        price_lookup = {}
+        if open_symbols:
+            try:
+                price_lookup = fetch_symbol_quotes(list(open_symbols))
+            except Exception as e:
+                print(f"[rebalancing] Error fetching prices: {e}")
+                price_lookup = {}
+
+        # Calculate current allocation
+        normalized = [_normalize_trade_record(trade) for trade in trades]
+        normalized = [trade for trade in normalized if trade]
+        
+        open_trades = []
+        for trade in normalized:
+            metrics = _evaluate_trade(trade, price_lookup)
+            if metrics and not metrics['is_closed']:
+                open_trades.append(metrics)
+
+        # Group by symbol and calculate totals
+        positions_by_symbol = {}
+        total_value = 0.0
+        
+        for trade in open_trades:
+            symbol = trade['symbol'].upper()
+            value = abs(trade['current_price'] * trade['quantity'])
+            total_value += value
+            
+            if symbol not in positions_by_symbol:
+                positions_by_symbol[symbol] = {
+                    'symbol': symbol,
+                    'quantity': 0,
+                    'entry_price': 0.0,
+                    'current_price': trade['current_price'],
+                    'current_value': 0.0,
+                    'cost_basis': 0.0,
+                    'unrealized_pnl': 0.0
+                }
+            
+            positions_by_symbol[symbol]['quantity'] += trade['quantity']
+            positions_by_symbol[symbol]['current_value'] += value
+            positions_by_symbol[symbol]['cost_basis'] += trade['cost_basis']
+            positions_by_symbol[symbol]['unrealized_pnl'] += trade['pnl']
+
+        # Build allocation list
+        current_allocation = []
+        for symbol, data in positions_by_symbol.items():
+            current_allocation.append({
+                'symbol': symbol,
+                'current_value': round(data['current_value'], 2),
+                'current_percent': round((data['current_value'] / total_value * 100) if total_value > 0 else 0, 2),
+                'quantity': data['quantity'],
+                'current_price': round(data['current_price'], 2),
+                'cost_basis': round(data['cost_basis'], 2),
+                'unrealized_pnl': round(data['unrealized_pnl'], 2)
+            })
+
+        # Sort by value descending
+        current_allocation.sort(key=lambda x: x['current_value'], reverse=True)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_value': round(total_value, 2),
+                'allocations': current_allocation
+            }
+        })
+
+    except Exception as e:
+        print(f"Error getting current allocation: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Failed to compute current allocation'}), 500
+
+
+@app.route('/api/rebalancing/targets', methods=['GET'])
+@login_required
+def get_target_allocations():
+    """Get all target allocations for the current user"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        allocations = mongodb_manager.get_user_target_allocations(user_info['user_id'])
+        return jsonify({'success': True, 'allocations': allocations})
+    except Exception as e:
+        print(f"Error getting target allocations: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/rebalancing/targets', methods=['POST'])
+@login_required
+def save_target_allocation():
+    """Save a target allocation"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        data = request.get_json() or {}
+        
+        # Validate required fields
+        name = data.get('name', '').strip()
+        allocations = data.get('allocations', [])
+        
+        if not name:
+            return jsonify({'success': False, 'error': 'Allocation name is required'}), 400
+        
+        # Validate allocations sum to ~100%
+        total_pct = sum(a.get('target_pct', 0) for a in allocations)
+        if abs(total_pct - 100.0) > 0.01:  # Allow small rounding errors
+            return jsonify({'success': False, 'error': f'Target allocations must sum to 100% (currently {total_pct:.2f}%)'}), 400
+        
+        allocation_data = {
+            'name': name,
+            'allocations': allocations,
+            'rebalance_threshold': float(data.get('rebalance_threshold', 5.0)),
+            'is_default': bool(data.get('is_default', False))
+        }
+        
+        allocation_id = mongodb_manager.save_target_allocation(user_info['user_id'], allocation_data)
+        
+        if allocation_id:
+            return jsonify({'success': True, 'allocation_id': allocation_id})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to save allocation'}), 500
+            
+    except Exception as e:
+        print(f"Error saving target allocation: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/rebalancing/targets/<allocation_id>', methods=['DELETE'])
+@login_required
+def delete_target_allocation(allocation_id):
+    """Delete a target allocation"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        success = mongodb_manager.delete_target_allocation(user_info['user_id'], allocation_id)
+        
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Allocation not found or delete failed'}), 404
+            
+    except Exception as e:
+        print(f"Error deleting target allocation: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/rebalancing/calculate', methods=['POST'])
+@login_required
+def calculate_rebalancing():
+    """Calculate rebalancing recommendations"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        data = request.get_json() or {}
+        allocation_id = data.get('allocation_id')
+        
+        # Get target allocation
+        if allocation_id:
+            target_allocation = None
+            all_allocations = mongodb_manager.get_user_target_allocations(user_info['user_id'])
+            for alloc in all_allocations:
+                if alloc['id'] == allocation_id:
+                    target_allocation = alloc
+                    break
+            if not target_allocation:
+                return jsonify({'success': False, 'error': 'Target allocation not found'}), 404
+        else:
+            target_allocation = mongodb_manager.get_default_target_allocation(user_info['user_id'])
+            if not target_allocation:
+                return jsonify({'success': False, 'error': 'No target allocation found. Please create one first.'}), 404
+        
+        # Get current allocation
+        user_id = user_info['user_id']
+        trades = mongodb_manager.get_user_trades(user_id) or []
+        
+        open_symbols = {
+            (trade.get('symbol') or '').upper().strip()
+            for trade in trades
+            if not trade.get('exit_price') and trade.get('symbol')
+        }
+
+        price_lookup = {}
+        if open_symbols:
+            try:
+                price_lookup = fetch_symbol_quotes(list(open_symbols))
+            except Exception as e:
+                print(f"[rebalancing] Error fetching prices: {e}")
+                price_lookup = {}
+
+        normalized = [_normalize_trade_record(trade) for trade in trades]
+        normalized = [trade for trade in normalized if trade]
+        
+        open_trades = []
+        for trade in normalized:
+            metrics = _evaluate_trade(trade, price_lookup)
+            if metrics and not metrics['is_closed']:
+                open_trades.append(metrics)
+
+        # Calculate current portfolio value
+        positions_by_symbol = {}
+        total_value = 0.0
+        
+        for trade in open_trades:
+            symbol = trade['symbol'].upper()
+            value = abs(trade['current_price'] * trade['quantity'])
+            total_value += value
+            
+            if symbol not in positions_by_symbol:
+                positions_by_symbol[symbol] = {
+                    'current_value': 0.0,
+                    'quantity': 0,
+                    'current_price': trade['current_price']
+                }
+            
+            positions_by_symbol[symbol]['current_value'] += value
+            positions_by_symbol[symbol]['quantity'] += trade['quantity']
+
+        # Build target allocation map - ensure no duplicates
+        target_map = {}
+        for a in target_allocation['allocations']:
+            symbol = a['symbol'].upper().strip()
+            if symbol:  # Only add non-empty symbols
+                target_map[symbol] = a['target_pct']
+        
+        rebalance_threshold = target_allocation.get('rebalance_threshold', 5.0)
+
+        # Calculate recommendations - ensure each symbol appears only once
+        recommendations = []
+        seen_recommendation_symbols = set()
+        total_target_value = total_value  # Use current total as base
+        
+        for symbol, target_pct in target_map.items():
+            if symbol in seen_recommendation_symbols:
+                continue  # Skip duplicates
+            seen_recommendation_symbols.add(symbol)
+            current_value = positions_by_symbol.get(symbol, {}).get('current_value', 0.0)
+            current_pct = (current_value / total_value * 100) if total_value > 0 else 0
+            target_value = total_target_value * (target_pct / 100)
+            
+            drift = abs(current_pct - target_pct)
+            needs_rebalance = drift > rebalance_threshold
+            
+            difference = target_value - current_value
+            difference_pct = target_pct - current_pct
+            
+            recommendations.append({
+                'symbol': symbol,
+                'current_value': round(current_value, 2),
+                'current_percent': round(current_pct, 2),
+                'target_value': round(target_value, 2),
+                'target_percent': round(target_pct, 2),
+                'difference': round(difference, 2),
+                'difference_percent': round(difference_pct, 2),
+                'drift': round(drift, 2),
+                'needs_rebalance': needs_rebalance,
+                'action': 'BUY' if difference > 0 else 'SELL' if difference < 0 else 'HOLD',
+                'quantity': positions_by_symbol.get(symbol, {}).get('quantity', 0),
+                'current_price': round(positions_by_symbol.get(symbol, {}).get('current_price', 0), 2)
+            })
+
+        # Add symbols in portfolio but not in target
+        for symbol, data in positions_by_symbol.items():
+            if symbol in seen_recommendation_symbols:
+                continue  # Already processed
+            if symbol not in target_map:
+                seen_recommendation_symbols.add(symbol)
+                current_value = data['current_value']
+                current_pct = (current_value / total_value * 100) if total_value > 0 else 0
+                recommendations.append({
+                    'symbol': symbol,
+                    'current_value': round(current_value, 2),
+                    'current_percent': round(current_pct, 2),
+                    'target_value': 0.0,
+                    'target_percent': 0.0,
+                    'difference': round(-current_value, 2),
+                    'difference_percent': round(-current_pct, 2),
+                    'drift': round(current_pct, 2),
+                    'needs_rebalance': True,
+                    'action': 'SELL',
+                    'quantity': data['quantity'],
+                    'current_price': round(data['current_price'], 2)
+                })
+
+        # Add symbols in target but not in portfolio
+        for symbol, target_pct in target_map.items():
+            if symbol in seen_recommendation_symbols:
+                continue  # Already processed
+            if symbol not in positions_by_symbol:
+                seen_recommendation_symbols.add(symbol)
+                target_value = total_target_value * (target_pct / 100)
+                recommendations.append({
+                    'symbol': symbol,
+                    'current_value': 0.0,
+                    'current_percent': 0.0,
+                    'target_value': round(target_value, 2),
+                    'target_percent': round(target_pct, 2),
+                    'difference': round(target_value, 2),
+                    'difference_percent': round(target_pct, 2),
+                    'drift': round(target_pct, 2),
+                    'needs_rebalance': True,
+                    'action': 'BUY',
+                    'quantity': 0,
+                    'current_price': 0.0
+                })
+
+        # Sort by drift descending
+        recommendations.sort(key=lambda x: x['drift'], reverse=True)
+
+        # Calculate summary
+        needs_rebalance_count = sum(1 for r in recommendations if r['needs_rebalance'])
+        total_buy = sum(r['difference'] for r in recommendations if r['action'] == 'BUY')
+        total_sell = abs(sum(r['difference'] for r in recommendations if r['action'] == 'SELL'))
+
+        # Build optimized rebalancing trades list
+        # Goal: Minimize number of trades while maintaining zero net cash flow
+        # Strategy: Calculate exact target values, then generate minimal trades to achieve them
+        
+        # First, calculate target dollar amounts for ALL symbols (including those not in portfolio)
+        target_values = {}
+        for rec in recommendations:
+            target_values[rec['symbol']] = rec['target_value']
+        
+        # Calculate current values for all symbols
+        current_values = {}
+        for symbol, data in positions_by_symbol.items():
+            current_values[symbol] = data['current_value']
+        
+        # Calculate net changes needed (target - current)
+        net_changes = {}
+        for symbol in set(list(target_values.keys()) + list(current_values.keys())):
+            target_val = target_values.get(symbol, 0.0)
+            current_val = current_values.get(symbol, 0.0)
+            net_changes[symbol] = target_val - current_val
+        
+        # Separate into buys and sells
+        buys = {}  # symbol -> dollar_amount
+        sells = {}  # symbol -> dollar_amount
+        
+        for symbol, net_change in net_changes.items():
+            if abs(net_change) < 0.01:  # Skip tiny changes
+                continue
+            
+            current_price = positions_by_symbol.get(symbol, {}).get('current_price', 0)
+            if current_price <= 0:
+                # Try to get price from recommendations
+                for rec in recommendations:
+                    if rec['symbol'] == symbol:
+                        current_price = rec['current_price']
+                        break
+            
+            if current_price <= 0:
+                continue  # Skip if no price available
+            
+            if net_change > 0:
+                # Need to buy
+                buys[symbol] = {
+                    'dollar_amount': net_change,
+                    'current_price': current_price,
+                    'quantity_available': positions_by_symbol.get(symbol, {}).get('quantity', 0)
+                }
+            else:
+                # Need to sell
+                max_sellable = positions_by_symbol.get(symbol, {}).get('quantity', 0) * current_price
+                sells[symbol] = {
+                    'dollar_amount': abs(net_change),
+                    'current_price': current_price,
+                    'quantity_available': positions_by_symbol.get(symbol, {}).get('quantity', 0)
+                }
+                # Cap at available quantity
+                sells[symbol]['dollar_amount'] = min(sells[symbol]['dollar_amount'], max_sellable)
+        
+        # Calculate totals
+        total_buy_amount = sum(b['dollar_amount'] for b in buys.values())
+        total_sell_amount = sum(s['dollar_amount'] for s in sells.values())
+        
+        # Normalize to ensure zero net cash flow
+        # Scale the larger side down to match the smaller side
+        if total_buy_amount > 0 and total_sell_amount > 0:
+            if total_buy_amount > total_sell_amount:
+                # Scale down buys proportionally
+                scale = total_sell_amount / total_buy_amount
+                for symbol in buys:
+                    buys[symbol]['dollar_amount'] *= scale
+            elif total_sell_amount > total_buy_amount:
+                # Scale down sells proportionally
+                scale = total_buy_amount / total_sell_amount
+                for symbol in sells:
+                    sells[symbol]['dollar_amount'] *= scale
+        
+        # Generate trades - convert dollar amounts to shares
+        # Use a dictionary to ensure each symbol appears only once
+        trades_by_symbol = {}  # symbol -> trade dict
+        
+        # Process buys - each symbol gets one trade maximum
+        for symbol, buy_info in buys.items():
+            dollar_amount = buy_info['dollar_amount']
+            price = buy_info['current_price']
+            
+            if dollar_amount < 1 or price <= 0:  # Skip tiny trades
+                continue
+            
+            shares = int(dollar_amount / price)
+            if shares > 0:
+                trade_value = shares * price
+                # Get allocation info from recommendations
+                rec_info = next((r for r in recommendations if r['symbol'] == symbol), None)
+                trades_by_symbol[symbol] = {
+                    'symbol': symbol,
+                    'action': 'BUY',
+                    'shares': shares,
+                    'price': round(price, 2),
+                    'total_value': round(trade_value, 2),
+                    'current_allocation': round(rec_info['current_percent'], 2) if rec_info else 0.0,
+                    'target_allocation': round(rec_info['target_percent'], 2) if rec_info else 0.0,
+                    'drift': round(rec_info['drift'], 2) if rec_info else 0.0
+                }
+        
+        # Process sells - check if symbol already exists, if so, combine or replace
+        for symbol, sell_info in sells.items():
+            dollar_amount = sell_info['dollar_amount']
+            price = sell_info['current_price']
+            max_quantity = sell_info['quantity_available']
+            
+            if dollar_amount < 1 or price <= 0:  # Skip tiny trades
+                continue
+            
+            shares = int(dollar_amount / price)
+            shares = min(shares, max_quantity)  # Don't sell more than available
+            
+            if shares > 0:
+                trade_value = shares * price
+                # Get allocation info from recommendations
+                rec_info = next((r for r in recommendations if r['symbol'] == symbol), None)
+                
+                # If symbol already has a trade, this shouldn't happen but handle it
+                if symbol in trades_by_symbol:
+                    # This means we have both buy and sell for same symbol - shouldn't happen
+                    # Keep the one with larger absolute value
+                    existing_value = abs(trades_by_symbol[symbol]['total_value'])
+                    if trade_value > existing_value:
+                        trades_by_symbol[symbol] = {
+                            'symbol': symbol,
+                            'action': 'SELL',
+                            'shares': shares,
+                            'price': round(price, 2),
+                            'total_value': round(trade_value, 2),
+                            'current_allocation': round(rec_info['current_percent'], 2) if rec_info else 0.0,
+                            'target_allocation': round(rec_info['target_percent'], 2) if rec_info else 0.0,
+                            'drift': round(rec_info['drift'], 2) if rec_info else 0.0
+                        }
+                else:
+                    trades_by_symbol[symbol] = {
+                        'symbol': symbol,
+                        'action': 'SELL',
+                        'shares': shares,
+                        'price': round(price, 2),
+                        'total_value': round(trade_value, 2),
+                        'current_allocation': round(rec_info['current_percent'], 2) if rec_info else 0.0,
+                        'target_allocation': round(rec_info['target_percent'], 2) if rec_info else 0.0,
+                        'drift': round(rec_info['drift'], 2) if rec_info else 0.0
+                    }
+        
+        # Convert to list - each symbol appears exactly once
+        rebalancing_trades = list(trades_by_symbol.values())
+        
+        # Final verification and adjustment to ensure zero net cash flow
+        total_buy_value = sum(t['total_value'] for t in rebalancing_trades if t['action'] == 'BUY')
+        total_sell_value = sum(t['total_value'] for t in rebalancing_trades if t['action'] == 'SELL')
+        net_cash_flow = total_sell_value - total_buy_value
+        
+        # If there's a small imbalance due to rounding, adjust the largest trade
+        if abs(net_cash_flow) > 0.01 and len(rebalancing_trades) > 0:
+            # Find largest trade of the type that needs adjustment
+            if net_cash_flow < 0:  # Need more sells or fewer buys
+                # Reduce largest buy
+                buy_trades = [t for t in rebalancing_trades if t['action'] == 'BUY']
+                if buy_trades:
+                    largest_buy = max(buy_trades, key=lambda t: t['total_value'])
+                    adjustment_shares = int(abs(net_cash_flow) / largest_buy['price'])
+                    if adjustment_shares > 0 and largest_buy['shares'] >= adjustment_shares:
+                        largest_buy['shares'] -= adjustment_shares
+                        largest_buy['total_value'] = round(largest_buy['shares'] * largest_buy['price'], 2)
+            else:  # net_cash_flow > 0, need more buys or fewer sells
+                # Reduce largest sell
+                sell_trades = [t for t in rebalancing_trades if t['action'] == 'SELL']
+                if sell_trades:
+                    largest_sell = max(sell_trades, key=lambda t: t['total_value'])
+                    adjustment_shares = int(net_cash_flow / largest_sell['price'])
+                    if adjustment_shares > 0 and largest_sell['shares'] >= adjustment_shares:
+                        largest_sell['shares'] -= adjustment_shares
+                        largest_sell['total_value'] = round(largest_sell['shares'] * largest_sell['price'], 2)
+        
+        # Remove trades with zero shares
+        rebalancing_trades = [t for t in rebalancing_trades if t['shares'] > 0]
+        
+        # Final deduplication check - ensure no duplicate symbols
+        seen_symbols = set()
+        unique_trades = []
+        for trade in rebalancing_trades:
+            if trade['symbol'] not in seen_symbols:
+                seen_symbols.add(trade['symbol'])
+                unique_trades.append(trade)
+        rebalancing_trades = unique_trades
+        
+        # Sort by drift (highest first) for display
+        rebalancing_trades.sort(key=lambda t: t['drift'], reverse=True)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_portfolio_value': round(total_value, 2),
+                'rebalance_threshold': rebalance_threshold,
+                'needs_rebalance_count': needs_rebalance_count,
+                'total_buy': round(total_buy, 2),
+                'total_sell': round(total_sell, 2),
+                'recommendations': recommendations,
+                'rebalancing_trades': rebalancing_trades
+            }
+        })
+
+    except Exception as e:
+        print(f"Error calculating rebalancing: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/rebalancing/tax-harvesting', methods=['GET'])
+@login_required
+def get_tax_harvesting_suggestions():
+    """Get tax-loss harvesting suggestions"""
+    try:
+        user_info = get_user_info()
+        if not user_info:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+
+        user_id = user_info['user_id']
+        trades = mongodb_manager.get_user_trades(user_id) or []
+
+        # Get open positions with losses
+        open_symbols = {
+            (trade.get('symbol') or '').upper().strip()
+            for trade in trades
+            if not trade.get('exit_price') and trade.get('symbol')
+        }
+
+        price_lookup = {}
+        if open_symbols:
+            try:
+                price_lookup = fetch_symbol_quotes(list(open_symbols))
+            except Exception as e:
+                print(f"[rebalancing] Error fetching prices: {e}")
+                price_lookup = {}
+
+        normalized = [_normalize_trade_record(trade) for trade in trades]
+        normalized = [trade for trade in normalized if trade]
+        
+        # Find positions with unrealized losses
+        tax_harvesting_opportunities = []
+        
+        for trade in normalized:
+            metrics = _evaluate_trade(trade, price_lookup)
+            if metrics and not metrics['is_closed']:
+                unrealized_pnl = metrics['pnl']
+                if unrealized_pnl < 0:  # Loss
+                    loss_amount = abs(unrealized_pnl)
+                    loss_pct = metrics['return_pct']
+                    
+                    tax_harvesting_opportunities.append({
+                        'symbol': metrics['symbol'],
+                        'quantity': metrics['quantity'],
+                        'entry_price': round(metrics['entry_price'], 2),
+                        'current_price': round(metrics['current_price'], 2),
+                        'unrealized_loss': round(loss_amount, 2),
+                        'loss_percent': round(loss_pct, 2),
+                        'tax_savings_estimate': round(loss_amount * 0.37, 2),  # Assume 37% tax bracket
+                        'holding_days': metrics.get('holding_days', 0),
+                        'is_short_term': metrics.get('holding_days', 0) < 365  # Short-term if < 1 year
+                    })
+
+        # Sort by loss amount descending
+        tax_harvesting_opportunities.sort(key=lambda x: x['unrealized_loss'], reverse=True)
+
+        total_losses = sum(o['unrealized_loss'] for o in tax_harvesting_opportunities)
+        total_tax_savings = sum(o['tax_savings_estimate'] for o in tax_harvesting_opportunities)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'opportunities': tax_harvesting_opportunities,
+                'total_unrealized_losses': round(total_losses, 2),
+                'total_potential_tax_savings': round(total_tax_savings, 2),
+                'count': len(tax_harvesting_opportunities)
+            }
+        })
+
+    except Exception as e:
+        print(f"Error getting tax harvesting suggestions: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Failed to compute tax harvesting suggestions'}), 500
 
 
 @app.route('/api/analytics/trade-performance', methods=['GET'])
